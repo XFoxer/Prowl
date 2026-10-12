@@ -201,4 +201,59 @@ struct TraeSupportTests {
     let agent = try agent()
     #expect(agent.detectState(in: "screen without a live rule") == .unknown)
   }
+
+  // MARK: - Screen detection: region anchoring (regressions)
+
+  @Test func quotedTrustQuestionUnderARunningIndicatorReadsAsWorking() throws {
+    let agent = try agent()
+    // The transcript quotes a trust dialog verbatim, but the live composer box
+    // below still carries the interrupt hint: the quoted dialog is history and
+    // must not outrank the running turn.
+    let screen = """
+      The CLI once asked:
+      Do you trust the contents of this directory?
+      ❯ 1. Yes, continue
+        2. No, quit
+
+      ❯
+      ────────────────────────────────────────────────
+      ✻ Thinking… (esc to interrupt)
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
+  @Test func numberedDraftInsideAnIdleComposerReadsAsIdle() throws {
+    let agent = try agent()
+    // A two-line numbered draft typed into the composer is the user's input, not
+    // a live choice dialog; the status row below it reads idle.
+    let screen = """
+      ❯ 1. First draft line
+        2. Second draft line
+      ────────────────────────────────────────────────
+      DeepSeek-V4.1-Flash · Context 100% left · /Users/me/App ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func interruptWordsInsideAnIdleComposerReadAsIdle() throws {
+    let agent = try agent()
+    // `to interrupt` typed as the draft must not read as a running turn.
+    let screen = """
+      ❯ Explain how to interrupt a task
+      ────────────────────────────────────────────────
+      DeepSeek-V4.1-Flash · Context 100% left · /Users/me/App ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func selectionMarkWithoutAComposerOrSiblingStaysUnknown() throws {
+    let agent = try agent()
+    // A stray `❯`-marked numbered line with no closing composer border and no
+    // unselected sibling is neither a composer nor a live dialog: unknown.
+    let screen = """
+      Steps to reproduce:
+      ❯ 1. Only one option shown
+      """
+    #expect(agent.detectState(in: screen) == .unknown)
+  }
 }

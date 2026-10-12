@@ -100,12 +100,36 @@ stays Working.
 Antigravity currently uses screen state and cooperative delivery, without a
 managed hook channel or transcript reader.
 
+### TraeCode CLI
+
+TraeCode CLI (`traecli`, verified 0.201.7) is a Codex-CLI fork: it reuses Codex's
+session-store shape under `~/.trae/cli/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`,
+held open for the life of an interactive session, so the open rollout file
+identifies the session exactly. `TRAE_HOME` relocates the whole `~/.trae` tree
+(verified: an isolated run wrote its config and sessions under the relocated
+`cli/sessions`), so a managed Agent Profile binds the account through `TRAE_HOME`.
+
+The detector reads the bottom of the active screen. A trust dialog
+(`Do you trust the contents of this directory?`) or a numbered choice dialog
+whose selection row is marked by a column-0 `❯` is **Blocked**. An `esc to
+interrupt`-style hint in the live region is **Working**. The composer's own status
+row directly under the input — `<model> · Context <n>% left · <cwd> ▧ Workspace
+Edit` — together with a `❯` prompt row on screen is **Idle**. Anything else is
+**unknown**, never Idle, so a screen without the live composer cannot forge an
+idle reading. The exact working footer could not be captured live (the shared
+TraeCode app-server was serving this session's own TUI), so the working signature
+is the binary-verified `to interrupt` hint; a typed screen profile is deferred,
+mirroring Antigravity.
+
+TraeCode CLI currently uses screen state and cooperative delivery, without a
+managed hook channel or transcript reader.
+
 ## Agents it recognizes
 
 Claude (Claude Code), Codex, Gemini, Cursor, Cline, OpenCode, GitHub Copilot,
 Kimi, Droid, Amp, Pi (`pi`), Oh My Pi (`omp`, `oh-my-pi`), Qoder CLI (`qodercli`),
-Qwen Code (`qwen`), Grok Build (`grok`), Devin (`devin`), and Antigravity
-(`agy`). Detection covers
+Qwen Code (`qwen`), Grok Build (`grok`), Devin (`devin`), Antigravity
+(`agy`), and TraeCode CLI (`traecli`). Detection covers
 common wrappers (node, python, bun, bash, etc.) so agents launched indirectly are
 still found. Pi and Oh My Pi are independent detected agents. Pi recognizes its
 own minimal working/idle cues, including its built-in braille-prefixed `Working...`

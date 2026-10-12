@@ -2690,7 +2690,8 @@
                 "codex",
                 "agents",
                 "devin",
-                "antigravity"
+                "antigravity",
+                "trae"
               ]
             },
             "detected": {
@@ -2724,7 +2725,8 @@
                 "codex",
                 "agents",
                 "devin",
-                "antigravity"
+                "antigravity",
+                "trae"
               ]
             },
             "detected": {
@@ -2760,7 +2762,8 @@
                 "codex",
                 "agents",
                 "devin",
-                "antigravity"
+                "antigravity",
+                "trae"
               ]
             },
             "detected": {
@@ -2860,7 +2863,8 @@
             "codex",
             "agents",
             "devin",
-            "antigravity"
+            "antigravity",
+            "trae"
           ]
         },
         "path": {

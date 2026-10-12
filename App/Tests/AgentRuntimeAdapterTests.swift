@@ -43,6 +43,7 @@ struct AgentRuntimeAdapterTests {
         runtime: .omp, agent: .omp, executable: "omp",
         arguments: ["--approval-mode", "always-ask"]),
       CatalogExpectation(runtime: .antigravity, agent: .antigravity, executable: "agy", arguments: []),
+      CatalogExpectation(runtime: .trae, agent: .trae, executable: "traecli", arguments: []),
     ]
 
     #expect(AgentProfileRuntime.allCases.count == expected.count)
@@ -107,6 +108,8 @@ struct AgentRuntimeAdapterTests {
         runtime: .antigravity,
         promptedArguments: ["--prompt-interactive", "Review this."],
         headlessArguments: ["--print", "Review this."]),
+      IntentExpectation(
+        runtime: .trae, promptedArguments: ["Review this."], headlessArguments: ["exec", "Review this."]),
     ]
 
     for expectation in expected {
@@ -138,10 +141,10 @@ struct AgentRuntimeAdapterTests {
     let noReasoning: Set<AgentProfileRuntime> = [.gemini, .cursor, .kimi, .droid, .devin]
     let executionModeSelection: Set<AgentProfileRuntime> = [
       .claude, .codex, .gemini, .cursor, .cline, .opencode, .copilot, .kimi, .qoder, .qwen, .grok,
-      .omp, .devin, .antigravity,
+      .omp, .devin, .antigravity, .trae,
     ]
     let isolated: Set<AgentProfileRuntime> = [
-      .claude, .codex, .gemini, .cline, .copilot, .qoder, .qwen, .pi, .omp,
+      .claude, .codex, .gemini, .cline, .copilot, .qoder, .qwen, .pi, .omp, .trae,
     ]
 
     for runtime in AgentProfileRuntime.allCases {
@@ -183,6 +186,10 @@ struct AgentRuntimeAdapterTests {
       (.pi, ["--model", "model-x", "--thinking", "high"]),
       (.omp, ["--model", "model-x", "--thinking", "high", "--approval-mode", "yolo"]),
       (.antigravity, ["--model", "model-x", "--effort", "high", "--dangerously-skip-permissions"]),
+      (
+        .trae,
+        ["--model", "model-x", "-c", "model_reasoning_effort=high", "--dangerously-bypass-approvals-and-sandbox"]
+      ),
     ]
 
     for (runtime, arguments) in expected {

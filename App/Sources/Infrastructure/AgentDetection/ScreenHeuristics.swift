@@ -72,12 +72,22 @@ extension DetectedAgent {
     case .copilot: detectCopilot(text)
     case .kimi: detectKimi(text)
     case .droid: detectDroid(text)
+    default: detectLegacyScreenTail(text)
+    }
+  }
+
+  // Split across two switches so each stays within the complexity budget:
+  // claude/codex/devin are dispatched by `detectScreen` before reaching here,
+  // so they fall through the tail to `.unknown`.
+  private nonisolated func detectLegacyScreenTail(_ text: String) -> AgentRawState {
+    switch self {
     case .amp: detectAmp(text)
     case .qoder: detectQoder(text)
     case .qwen: detectQwen(text)
     case .grok: detectGrok(text)
     case .antigravity: detectAntigravity(text)
-    case .claude, .codex, .devin: .unknown
+    case .trae: detectTrae(text)
+    default: .unknown
     }
   }
 }
@@ -873,6 +883,85 @@ nonisolated private func hasBrailleSpinner(_ content: String) -> Bool {
     return (0x2800...0x28FF).contains(Int(first.value))
       && trimmed.contains(where: \.isLetter)
   }
+}
+
+// TraeCode CLI (`traecli`/`traex`, verified 0.201.7): a Codex-CLI fork with its
+// own glyphs (`❯` for the composer and the selection mark, not Codex's `›`). The
+// live region sits at the bottom of the screen: a full-width `─` composer
+// border, a column-0 `❯` prompt row (wrapped input continues on indented rows),
+// a second full-width `─` border, and the built-in status row directly below it
+// — `<model> · Context <n>% left · <cwd> ▧ Workspace Edit` when idle. While a
+// turn runs that status carries an interrupt hint (`esc to interrupt`); trust
+// and other choice dialogs replace the composer with numbered option rows whose
+// selection is marked by a column-0 `❯`. The scan is bottom-anchored so
+// transcript history cannot speak for the live region, and a screen that shows
+// none of these is `.unknown`, never affirmative idle. The exact working footer
+// was not captured live (the shared TraeCode app-server was serving this
+// session's own TUI), so the working signature is the binary-verified
+// `to interrupt` hint; a typed profile stays deferred, mirroring Antigravity.
+nonisolated private func detectTrae(_ content: String) -> AgentRawState {
+  let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+    .map { $0.trimmingCharacters(in: .whitespaces) }
+    .filter { !$0.isEmpty }
+
+  if lines.contains(where: isTraeTrustQuestion) {
+    return .blocked
+  }
+  // A numbered option list marked by the column-0 selection glyph is a live
+  // dialog (trust, approval, plan review); the composer never renders
+  // `❯ <n>. <text>` beside a plain `<n>. <text>` sibling.
+  let live = Array(lines.suffix(8))
+  if live.contains(where: isTraeSelectionRow) && live.contains(where: isTraeUnselectedOptionRow) {
+    return .blocked
+  }
+  if live.contains(where: hasTraeInterruptHint) {
+    return .working
+  }
+  // The composer's own status row is the last live evidence: the context/model
+  // line under the bottom border. Require a `❯` prompt row so a stray transcript
+  // line shaped like the status row cannot forge idle.
+  if lines.contains(where: isTraePromptRow), lines.suffix(2).contains(where: isTraeContextStatusRow) {
+    return .idle
+  }
+  return .unknown
+}
+
+nonisolated private func isTraeTrustQuestion(_ line: String) -> Bool {
+  line.contains("Do you trust the contents of this directory?")
+}
+
+nonisolated private func isTraePromptRow(_ line: String) -> Bool {
+  line == "❯" || line.hasPrefix("❯ ")
+}
+
+/// `❯ 1. Yes, continue` — the `❯` selection mark plus a numbered option.
+nonisolated private func isTraeSelectionRow(_ line: String) -> Bool {
+  guard line.hasPrefix("❯ ") else { return false }
+  return isTraeNumberedOption(String(line.dropFirst(2)))
+}
+
+/// `  2. No, quit` — a numbered option without the selection mark.
+nonisolated private func isTraeUnselectedOptionRow(_ line: String) -> Bool {
+  guard !line.hasPrefix("❯") else { return false }
+  return isTraeNumberedOption(line)
+}
+
+nonisolated private func isTraeNumberedOption(_ text: String) -> Bool {
+  guard let dot = text.firstIndex(of: ".") else { return false }
+  let number = text[..<dot]
+  guard !number.isEmpty, number.allSatisfy(\.isNumber) else { return false }
+  return text[text.index(after: dot)...].hasPrefix(" ")
+}
+
+/// Binary-verified `" to interrupt"` (the fork reuses Codex's interrupt footer).
+nonisolated private func hasTraeInterruptHint(_ line: String) -> Bool {
+  line.lowercased().contains("to interrupt")
+}
+
+/// `DeepSeek-V4.1-Flash · Context 100% left · /cwd … ▧ Workspace Edit`.
+nonisolated private func isTraeContextStatusRow(_ line: String) -> Bool {
+  let lower = line.lowercased()
+  return line.contains(" · ") && lower.contains("context ") && lower.contains("left")
 }
 
 // Antigravity CLI (`agy`, verified live on 1.3.2): the live region is the

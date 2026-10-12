@@ -491,9 +491,10 @@ directory exists:
 |---|---|---|---|
 | `claude` | `~/.claude/skills` | `<repo>/.claude/skills` | Claude Code |
 | `codex` | `~/.codex/skills` | `<repo>/.codex/skills` | Codex |
-| `agents` | `~/.agents/skills` | `<repo>/.agents/skills` | Codex, Gemini CLI, Cursor Agent, OpenCode, Copilot CLI, Kimi CLI, Droid, Amp, Qoder CLI, Pi, Oh My Pi, Grok Build, Devin, Antigravity |
+| `agents` | `~/.agents/skills` | `<repo>/.agents/skills` | Codex, Gemini CLI, Cursor Agent, OpenCode, Copilot CLI, Kimi CLI, Droid, Amp, Qoder CLI, Pi, Oh My Pi, Grok Build, Devin, Antigravity, TraeCode CLI |
 | `devin` | `~/.config/devin/skills` | `<repo>/.devin/skills` | Devin |
 | `antigravity` | `~/.gemini/antigravity-cli/skills` | `<repo>/.agents/skills` | Antigravity |
+| `trae` | `~/.trae/skills` | `<repo>/.agents/skills` | TraeCode CLI |
 
 - A bare `prowl skills install` links every user-installable bundled skill into every
   detected target; repeat `--target` to pick targets explicitly (an explicit target's

@@ -96,12 +96,13 @@ same status as `prowl skills list`.
   not listed.
 - **Target lines** — one per *detected* target under each skill: `Claude Code`
   (`~/.claude/skills`), `Codex` (`~/.codex/skills`), `Shared agents directory`
-  (`~/.agents/skills`), `Devin` (`~/.config/devin/skills`), and `Antigravity`
-  (`~/.gemini/antigravity-cli/skills`), each showing the link's folder
+  (`~/.agents/skills`), `Devin` (`~/.config/devin/skills`), `Antigravity`
+  (`~/.gemini/antigravity-cli/skills`), and `TraeCode CLI` (`~/.trae/skills`), each
+  showing the link's folder
   (`~/.claude/skills/prowl-cli`), its status, and one action. A target is
   detected when its parent folder exists. With no detected target the section
   says so and points at
-  `prowl skills install --target <claude|codex|agents|devin|antigravity>`,
+  `prowl skills install --target <claude|codex|agents|devin|antigravity|trae>`,
   which creates the folder.
 - **Statuses and actions** — one explicit action per skill × target link:
 

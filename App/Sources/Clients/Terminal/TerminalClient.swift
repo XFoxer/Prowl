@@ -68,7 +68,9 @@ struct TerminalClient {
     case setCanvasMode(Bool)
     case setSelectedWorktreeID(Worktree.ID?)
     case saveLayoutSnapshot
-    case restoreLayoutSnapshot(worktrees: [Worktree])
+    /// `allowsMissingWorktrees` skips the saved worktrees that `worktrees` does not hold
+    /// instead of resetting the whole layout; a failed repository load leaves them out.
+    case restoreLayoutSnapshot(worktrees: [Worktree], allowsMissingWorktrees: Bool = false)
     case presentTabIconPicker(Worktree)
   }
 

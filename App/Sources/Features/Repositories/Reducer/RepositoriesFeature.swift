@@ -540,7 +540,21 @@ struct RepositoriesFeature {
   enum SnapshotPersistencePhase: Equatable {
     case idle
     case restoring
+    /// The first live load finished, but some repositories failed. The cached snapshot
+    /// stays as is until a complete load, so it does not lose the failed repositories.
+    case withheld
     case active
+
+    /// Whether the live load replaced the cached snapshot in the repository list.
+    var hasLoadedLiveRepositories: Bool {
+      self == .withheld || self == .active
+    }
+
+    /// The phase after a live load finished with these failures.
+    func afterLiveLoad(hasFailures: Bool) -> Self {
+      if !hasFailures { return .active }
+      return self == .restoring ? .withheld : self
+    }
   }
 
   enum Alert: Equatable {

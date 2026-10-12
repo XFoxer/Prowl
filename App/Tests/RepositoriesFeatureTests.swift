@@ -1952,6 +1952,54 @@ struct RepositoriesFeatureTests {
     #expect(savedSnapshots.value.isEmpty)
   }
 
+  @Test func repositoriesLoadedWithFailureWhileRestoringWithholdsSnapshotUntilCompleteLoad() async {
+    let repoRoot = "/tmp/repo"
+    let missingRoot = "/tmp/missing"
+    let worktree = makeWorktree(id: "\(repoRoot)/main", name: "main", repoRoot: repoRoot)
+    let repository = makeRepository(id: repoRoot, worktrees: [worktree])
+    let roots = [URL(fileURLWithPath: repoRoot), URL(fileURLWithPath: missingRoot)]
+    let savedSnapshots = LockIsolated<[[Repository]]>([])
+    var state = RepositoriesFeature.State()
+    state.snapshotPersistencePhase = .restoring
+
+    let store = TestStore(initialState: state) {
+      RepositoriesFeature()
+    } withDependencies: {
+      $0.repositoryPersistence.saveRepositorySnapshot = { repositories in
+        savedSnapshots.withValue { $0.append(repositories) }
+      }
+    }
+
+    await store.send(
+      .repositoriesLoaded(
+        [repository],
+        failures: [RepositoriesFeature.LoadFailure(rootID: missingRoot, message: "boom")],
+        roots: roots,
+        animated: false
+      )
+    ) {
+      $0.repositories = [repository]
+      $0.repositoryRoots = roots
+      $0.isInitialLoadComplete = true
+      $0.loadFailuresByID = [missingRoot: "boom"]
+      $0.snapshotPersistencePhase = .withheld
+    }
+    // Layout restore waits for this delegate after the live load.
+    await store.receive(\.delegate.repositoriesChanged)
+    await store.finish()
+    #expect(savedSnapshots.value.isEmpty)
+
+    await store.send(
+      .repositoriesLoaded([repository], failures: [], roots: [roots[0]], animated: false)
+    ) {
+      $0.repositoryRoots = [roots[0]]
+      $0.loadFailuresByID = [:]
+      $0.snapshotPersistencePhase = .active
+    }
+    await store.finish()
+    #expect(savedSnapshots.value == [[repository]])
+  }
+
   @Test func repositoriesLoadedPersistsRepositorySnapshotOnSuccess() async {
     let repoRoot = "/tmp/repo"
     let worktree = makeWorktree(id: "\(repoRoot)/main", name: "main", repoRoot: repoRoot)

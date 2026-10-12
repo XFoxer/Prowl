@@ -308,9 +308,11 @@ struct AppFeature {
         let worktrees = state.repositories.worktreesForInfoWatcher()
         let openedWorktreeIDs = openedWorktreeIDsForInfoWatcher(from: state.repositories)
         let plainRepositoryRoots = state.repositories.plainRepositoryRootsForInfoWatcher()
+        // A failed repository must not block the restore for the others; the deferred
+        // default view mode waits for this restore to finish.
         let shouldRestoreLayout =
           state.launchRestoreMode == .restoreLayout
-          && state.repositories.snapshotPersistencePhase == .active
+          && state.repositories.snapshotPersistencePhase.hasLoadedLiveRepositories
         let shouldDeferDefaultView = state.launchRestoreMode == .restoreLayout
         appLogger.info(
           "[LayoutRestore] repositoriesChanged: mode=\(String(describing: state.launchRestoreMode))"
@@ -325,6 +327,7 @@ struct AppFeature {
           ids.contains($0.key)
         }
         let restorableWorktrees = makeTerminalRestorableWorktrees(from: Array(repositories))
+        let allowsMissingWorktrees = !failedRepositoryIDs.isEmpty
         appLogger.info("[LayoutRestore] restorableWorktrees count=\(restorableWorktrees.count)")
         var allEffects: [Effect<Action>] = [
           // Runs a previous app instance left behind are marked interrupted (dsl-spec §10 Restart).
@@ -358,7 +361,9 @@ struct AppFeature {
           if shouldRestoreLayout {
             effects.append(
               .run { _ in
-                await terminalClient.send(.restoreLayoutSnapshot(worktrees: restorableWorktrees))
+                await terminalClient.send(
+                  .restoreLayoutSnapshot(
+                    worktrees: restorableWorktrees, allowsMissingWorktrees: allowsMissingWorktrees))
               }
             )
           }
@@ -384,7 +389,9 @@ struct AppFeature {
         if shouldRestoreLayout {
           effects.append(
             .run { _ in
-              await terminalClient.send(.restoreLayoutSnapshot(worktrees: restorableWorktrees))
+              await terminalClient.send(
+                .restoreLayoutSnapshot(
+                  worktrees: restorableWorktrees, allowsMissingWorktrees: allowsMissingWorktrees))
             }
           )
         }

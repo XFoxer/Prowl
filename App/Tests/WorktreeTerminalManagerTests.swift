@@ -794,6 +794,58 @@ struct WorktreeTerminalManagerTests {
     #expect(event == .layoutRestoreFailed(message: "Saved terminal layout was invalid and has been reset"))
   }
 
+  @Test func restoreLayoutSnapshotSkipsMissingWorktreesWhenAllowed() async throws {
+    let clearCount = LockIsolated(0)
+    let available = makeWorktree()
+    let missingID = "/tmp/missing/main"
+    func snapshotWorktree(_ worktreeID: String) -> TerminalLayoutSnapshotPayload.SnapshotWorktree {
+      let tabID = UUID().uuidString
+      return TerminalLayoutSnapshotPayload.SnapshotWorktree(
+        worktreeID: worktreeID,
+        selectedTabID: tabID,
+        tabs: [
+          TerminalLayoutSnapshotPayload.SnapshotTab(
+            tabID: tabID,
+            title: nil,
+            icon: nil,
+            splitRoot: .leaf(surfaceID: UUID().uuidString)
+          )
+        ]
+      )
+    }
+    let snapshot = TerminalLayoutSnapshotPayload(
+      selectedWorktreeID: missingID,
+      worktrees: [snapshotWorktree(missingID), snapshotWorktree(available.id)]
+    )
+    let manager = WorktreeTerminalManager(
+      runtime: GhosttyRuntime(),
+      layoutPersistence: TerminalLayoutPersistenceClient(
+        loadSnapshot: { snapshot },
+        saveSnapshot: { _ in true },
+        clearSnapshot: {
+          clearCount.withValue { $0 += 1 }
+          return true
+        }
+      )
+    )
+    let stream = manager.eventStream()
+
+    await manager.restoreLayoutSnapshot(from: [available], allowsMissingWorktrees: true)
+
+    let event = await nextEvent(stream) { event in
+      switch event {
+      case .layoutRestored, .layoutRestoreFailed: true
+      default: false
+      }
+    }
+
+    // The selected worktree was skipped, so the selection falls back to the default.
+    #expect(event == .layoutRestored(selectedWorktreeID: nil))
+    #expect(clearCount.value == 0)
+    let restored = try #require(manager.stateIfExists(for: available.id))
+    #expect(restored.tabManager.tabs.count == 1)
+  }
+
   @Test func restoreLayoutSnapshotEmitsRestoredNilWhenSnapshotMissing() async {
     let manager = WorktreeTerminalManager(
       runtime: GhosttyRuntime(),

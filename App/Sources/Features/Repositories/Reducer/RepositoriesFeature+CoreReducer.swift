@@ -225,9 +225,8 @@ extension RepositoriesFeature {
     case .repositoriesLoaded(let repositories, let failures, let roots, let animated):
       state.isRefreshingWorktrees = false
       let wasRestoringSnapshot = state.snapshotPersistencePhase == .restoring
-      if failures.isEmpty, state.snapshotPersistencePhase != .active {
-        state.snapshotPersistencePhase = .active
-      }
+      state.snapshotPersistencePhase = state.snapshotPersistencePhase.afterLiveLoad(
+        hasFailures: !failures.isEmpty)
       let previousSelection = state.selectedWorktreeID
       let previousSelectedWorktree = state.worktree(for: previousSelection)
       let incomingRepositories = IdentifiedArray(uniqueElements: repositories)

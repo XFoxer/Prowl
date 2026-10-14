@@ -132,6 +132,8 @@
     "The target terminal is no longer available.": "protocol",
     "The workflow run is not active.": "protocol",
     "This step requires a verdict: pass --verdict with one of %@.": "protocol",
+    "TraeCode CLI": "product-name",
+    "Unknown Canvas layout mode %@": "developer",
     "Unknown workflow scope '%@'.": "other",
     "User canceled": "identifier",
     "VS Code": "product-name",

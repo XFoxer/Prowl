@@ -2277,6 +2277,16 @@
         }
       }
     },
+    "Arranging: cards re-arrange as they are added or closed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排列中：新增或关闭卡片时会重新排列"
+          }
+        }
+      }
+    },
     "Ask Again" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9179,6 +9189,16 @@
         }
       }
     },
+    "Keep a layout" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持布局"
+          }
+        }
+      }
+    },
     "Keep a separate login, usage, and configuration for this profile" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11888,6 +11908,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将卡片整理为规则网格"
+          }
+        }
+      }
+    },
+    "Organizing: cards keep the grid as they are added or closed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理中：新增或关闭卡片时保持网格"
           }
         }
       }
@@ -17897,6 +17927,16 @@
         }
       }
     },
+    "The highlighted layout button stays on as cards are added or closed. Drag or resize a card to place cards freely." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高亮的布局按钮会在新增或关闭卡片时保持开启。拖动或调整卡片大小即可自由摆放卡片。"
+          }
+        }
+      }
+    },
     "The language will switch on next launch." : {
       "localizations" : {
         "zh-Hans" : {
@@ -18584,6 +18624,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "平铺卡片以填满画布"
+          }
+        }
+      }
+    },
+    "Tiling: cards re-tile as they are added or closed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平铺中：新增或关闭卡片时会重新平铺"
           }
         }
       }

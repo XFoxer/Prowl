@@ -31,12 +31,21 @@ struct TraeSupportTests {
 
   // MARK: - Runtime adapter
 
+  /// traecli's TUI notification defaults to off, so a turn completion only
+  /// reaches Prowl through Ghostty's OSC 9 callback if the adapter asks for it.
+  private static let notificationOptions = [
+    "-c", "tui.notifications=true",
+    "-c", "tui.notification_method=osc9",
+    "-c", "tui.notification_condition=always",
+  ]
+
   @Test func launchBuildsCodexShapedInvocations() throws {
     let runtime = try #require(AgentProfileRuntime(rawValue: "trae"))
     #expect(AgentRuntimeAdapterRegistry.displayName(for: runtime) == "TraeCode CLI")
     #expect(runtime.defaultHomeDirectoryName == ".trae")
 
-    let options = ["--model", "gpt-5.6-sol", "-c", "model_reasoning_effort=high"]
+    let options =
+      ["--model", "gpt-5.6-sol", "-c", "model_reasoning_effort=high"] + Self.notificationOptions
     for (intent, expected) in [
       (AgentStartIntent.interactive, options),
       (.prompt("Review this."), options + ["Review this."]),
@@ -54,7 +63,23 @@ struct TraeSupportTests {
     let unrestricted = try AgentRuntimeAdapterRegistry.makeStartInvocation(
       AgentStartRequest(
         runtime: runtime, intent: .interactive, configuration: .init(executionMode: .unrestricted)))
-    #expect(unrestricted.arguments == ["--dangerously-bypass-approvals-and-sandbox"])
+    #expect(
+      unrestricted.arguments
+        == ["--dangerously-bypass-approvals-and-sandbox"] + Self.notificationOptions)
+  }
+
+  @Test func launchEnablesOsc9CompletionNotifications() throws {
+    let runtime = try #require(AgentProfileRuntime(rawValue: "trae"))
+    let invocation = try AgentRuntimeAdapterRegistry.makeStartInvocation(
+      AgentStartRequest(runtime: runtime, intent: .interactive, configuration: .init()))
+    // OSC 9 (not `bel`): Prowl's inbox is fed by Ghostty's desktop-notification
+    // callback, and its bell counter drives no inbox entry.
+    #expect(
+      invocation.arguments == [
+        "-c", "tui.notifications=true",
+        "-c", "tui.notification_method=osc9",
+        "-c", "tui.notification_condition=always",
+      ])
   }
 
   @Test func observesModelAndBothUnrestrictedSpellings() throws {

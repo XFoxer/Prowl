@@ -17,6 +17,14 @@ struct AgentRuntimeAdapterTests {
     let headlessArguments: [String]
   }
 
+  /// traecli's TUI notification defaults to off, so the adapter always injects
+  /// the OSC 9 config that lets a finished turn reach Prowl's inbox.
+  private static let traeNotificationArguments = [
+    "-c", "tui.notifications=true",
+    "-c", "tui.notification_method=osc9",
+    "-c", "tui.notification_condition=always",
+  ]
+
   @Test func profileRuntimeCatalogCoversEveryLaunchableCLI() throws {
     let expected = [
       CatalogExpectation(runtime: .claude, agent: .claude, executable: "claude", arguments: []),
@@ -43,7 +51,9 @@ struct AgentRuntimeAdapterTests {
         runtime: .omp, agent: .omp, executable: "omp",
         arguments: ["--approval-mode", "always-ask"]),
       CatalogExpectation(runtime: .antigravity, agent: .antigravity, executable: "agy", arguments: []),
-      CatalogExpectation(runtime: .trae, agent: .trae, executable: "traecli", arguments: []),
+      CatalogExpectation(
+        runtime: .trae, agent: .trae, executable: "traecli",
+        arguments: Self.traeNotificationArguments),
     ]
 
     #expect(AgentProfileRuntime.allCases.count == expected.count)
@@ -109,7 +119,9 @@ struct AgentRuntimeAdapterTests {
         promptedArguments: ["--prompt-interactive", "Review this."],
         headlessArguments: ["--print", "Review this."]),
       IntentExpectation(
-        runtime: .trae, promptedArguments: ["Review this."], headlessArguments: ["exec", "Review this."]),
+        runtime: .trae,
+        promptedArguments: Self.traeNotificationArguments + ["Review this."],
+        headlessArguments: ["exec"] + Self.traeNotificationArguments + ["Review this."]),
     ]
 
     for expectation in expected {
@@ -189,6 +201,7 @@ struct AgentRuntimeAdapterTests {
       (
         .trae,
         ["--model", "model-x", "-c", "model_reasoning_effort=high", "--dangerously-bypass-approvals-and-sandbox"]
+          + Self.traeNotificationArguments
       ),
     ]
 

@@ -418,6 +418,15 @@ nonisolated private struct TraeRuntimeAdapter: AgentRuntimeAdapter {
     if request.configuration.executionMode == .unrestricted {
       generated.append("--dangerously-bypass-approvals-and-sandbox")
     }
+    // traecli's TUI notification is off by default, so a finished turn never
+    // reaches Prowl's inbox, which only sees Ghostty's OSC 9 desktop-notification
+    // callback. `always` keeps the entry even while the pane is focused, where
+    // Prowl's own active-surface muting still suppresses the banner.
+    generated += [
+      "-c", "tui.notifications=true",
+      "-c", "tui.notification_method=osc9",
+      "-c", "tui.notification_condition=always",
+    ]
     let options = finalizedOptions(generated, request: request)
     return switch request.intent {
     case .interactive: AgentInvocation(executable: "traecli", arguments: options)

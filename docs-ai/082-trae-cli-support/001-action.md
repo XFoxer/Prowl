@@ -7,6 +7,8 @@
 | 2026-10-12 | Verified `traecli` 0.201.7 (`--help`, `exec --help`): `-m/--model`, `-c/--config <key=value>`, `--permission-mode <bypass_permissions\|auto\|default>`, `-y/--dangerously-bypass-approvals-and-sandbox`; `exec [PROMPT]`. Confirmed `TRAE_HOME` relocates the whole `~/.trae` tree (config and `cli/sessions`) | branch `feature/traecli-support` |
 | 2026-10-12 | Added `DetectedAgent.trae`, `AgentProfileRuntime.trae`, `TraeRuntimeAdapter`, session profile, legacy screen detector, classifier entries, tab icon, skill target, CLI schema enums, docs, and tests | branch `feature/traecli-support` |
 | 2026-10-12 | Green: `make build-app`, `make check`, CLI build/unit/smoke/integration, focused app suites (`TraeSupportTests`, `AgentClassifierTests`, `AgentRuntimeAdapterTests`, `AgentSessionResolverTests`, `ScreenHeuristicsTests`) | branch `feature/traecli-support` |
+| 2026-10-14 | Live on-prem 0.201.7 TUI showed the detector missed the two-space-indented status row and the `◆ Working…` line above the composer; rewrote `detectTrae` to match the status row by signature and read the working indicator first | branch `fork/trae-cli` |
+| 2026-10-14 | A finished traecli turn never reached Prowl's inbox because the CLI's `tui.notifications` defaults off; `TraeRuntimeAdapter.makeStartInvocation` now injects `-c tui.notifications=true -c tui.notification_method=osc9 -c tui.notification_condition=always` (values verified accepted by the on-prem binary) | branch `fork/trae-cli` |
 
 ## Outcome & current state (as of 2026-10-12)
 
@@ -39,6 +41,11 @@ hook channel. What exists now:
   `<model> · Context <n>% left · <cwd> ▧ Workspace Edit` status row reads Idle. The
   `detectLegacyScreen` switch was split into a head/tail pair to stay under SwiftLint's
   cyclomatic-complexity budget.
+- **Completion notifications** — traecli's TUI notification is off by default and Prowl's
+  inbox is fed only by Ghostty's OSC 9 desktop-notification callback, so `traecli` turns
+  were silent. `TraeRuntimeAdapter.makeStartInvocation` injects the three `-c` overrides
+  above for every Prowl-launched session; a manually launched `traecli` needs the same
+  values under `[tui]` in `~/.trae/traecli.toml`.
 - **Icon** — `Trae` asset (`App/Sources/Assets.xcassets/CommandIcons/Trae.imageset/`,
   Simple Icons CC0 mark, template rendering), keyed by `trae`/`trae-cli`/`traecli`/`traex`
   in `App/Sources/Features/Terminal/Models/CommandIconMap.swift`.

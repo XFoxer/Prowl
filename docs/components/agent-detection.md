@@ -122,7 +122,12 @@ is the binary-verified `to interrupt` hint; a typed screen profile is deferred,
 mirroring Antigravity.
 
 TraeCode CLI currently uses screen state and cooperative delivery, without a
-managed hook channel or transcript reader.
+managed hook channel or transcript reader. Its TUI notification is off by
+default, so a Prowl-launched session has `tui.notifications=true`,
+`tui.notification_method=osc9`, and `tui.notification_condition=always` injected
+as `-c` overrides; otherwise a finished turn never reaches the notification
+inbox (see [notifications](notifications.md)). A manually launched `traecli`
+needs the same values under `[tui]` in `~/.trae/traecli.toml`.
 
 ## Agents it recognizes
 

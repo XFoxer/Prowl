@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026.10.14](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.14)
+
+This release adds TraeCode CLI support to the fork and carries in the latest upstream work.
+
+### New
+
+- **TraeCode CLI (`traecli`) support.** Prowl detects `traecli` and its `traex`, `trae-cli`, and `trae-agent` aliases, launches it from Agent Profiles and workflow roles, and keeps each profile isolated with its own `TRAE_HOME` and `cli/sessions` history. Working, Blocked, and Idle states are read from the Trae composer, status line, and dialogs, and a Trae tab icon identifies the agent at a glance.
+- Canvas layout modes and the `prowl canvas` commands (from upstream): arrange terminal cards on the Canvas board and have the chosen layout remembered per workspace.
+
+### Improved
+
+- Oh My Pi is now a verified OSC 7501 status producer, so its Working, Blocked, and Done states come straight from the agent.
+- Switching between Shelf books does less animation work, keeping large libraries smoother.
+
+### Fixed
+
+- Restored the saved terminal layout when a repository fails to load.
 ## [2026.10.11](https://github.com/onevcat/Prowl/releases/tag/v2026.10.11)
 
 Agents can now report their status to Prowl directly through OSC 7501, starting with Claude Code and Pi. Split panes also get a close button.

@@ -1,4 +1,4 @@
-# 081 — TraeCode CLI (`traecli`) Support: Plan
+# 082 — TraeCode CLI (`traecli`) Support: Plan
 
 | | |
 | --- | --- |

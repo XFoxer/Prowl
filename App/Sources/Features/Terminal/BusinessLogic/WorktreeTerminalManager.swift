@@ -120,11 +120,6 @@ final class WorktreeTerminalManager {
     handleManagementCommand(command)
   }
 
-  /// Creates a tab at an explicit directory and returns its ID for immediate Canvas selection.
-  func createTabInDirectory(_ worktree: Worktree, directory: URL) -> TerminalTabID? {
-    createTabAsync(in: worktree, runSetupScriptIfNew: false, workingDirectory: directory)
-  }
-
   /// Synchronous launch boundary used by the CLI and workflow runner. Menu and
   /// palette launch events remain owned by the compatibility command below.
   func launchAgentProfile(

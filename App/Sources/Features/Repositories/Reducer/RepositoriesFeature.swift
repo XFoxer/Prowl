@@ -401,6 +401,9 @@ struct RepositoriesFeature {
     var pendingCanvasFocusRequest: CanvasFocusRequest?
     var nextCanvasCommandRequestID = 0
     var pendingCanvasCommandRequest: CanvasCommandRequest?
+    /// The last request Canvas actually ran (not dropped), so a caller can tell
+    /// its request ran rather than being replaced or discarded.
+    var lastPerformedCanvasCommandRequestID: Int?
     var activeAgents = ActiveAgentsFeature.State()
     /// `in <workflow> · <role>` labels for panes bound to an active run, synced by AppFeature
     /// from WorkflowRunsFeature state (docs-ai 063 C2).
@@ -487,6 +490,8 @@ struct RepositoriesFeature {
     case consumeCanvasFocusRequest(Int)
     case requestCanvasCommand(CanvasCommandRequest.Command)
     case consumeCanvasCommandRequest(Int)
+    /// Canvas closed without running the pending request.
+    case dropCanvasCommandRequest(Int)
     case worktreeHistoryBack
     case worktreeHistoryForward
     case revealSelectedWorktreeInSidebar

@@ -555,6 +555,9 @@ struct WorktreeDetailView: View {
         onCommandConsumed: { requestID in
           store.send(.repositories(.consumeCanvasCommandRequest(requestID)))
         },
+        onCommandDropped: { requestID in
+          store.send(.repositories(.dropCanvasCommandRequest(requestID)))
+        },
         onExpandedChange: { expanded in
           isCanvasCardExpanded = expanded
         }

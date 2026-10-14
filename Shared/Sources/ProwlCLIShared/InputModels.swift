@@ -547,6 +547,48 @@ public struct CloseInput: Codable, Sendable {
   }
 }
 
+public enum CanvasAction: String, Codable, Sendable, CaseIterable {
+  case show
+  case hide
+  case layout
+  case fit
+  case status
+}
+
+/// An automatic Canvas layout. The raw values are the CLI spelling.
+public enum CanvasLayoutName: String, Codable, Sendable, CaseIterable {
+  case arrange
+  case organize
+  case tile
+}
+
+public struct CanvasInput: Codable, Sendable {
+  public let action: CanvasAction
+  /// Required for `layout`; ignored otherwise.
+  public let layout: CanvasLayoutName?
+  /// For `layout` and `fit`: open Canvas first when it is hidden.
+  public let show: Bool
+
+  enum CodingKeys: String, CodingKey {
+    case action
+    case layout
+    case show
+  }
+
+  public init(action: CanvasAction, layout: CanvasLayoutName? = nil, show: Bool = false) {
+    self.action = action
+    self.layout = layout
+    self.show = show
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.action = try container.decode(CanvasAction.self, forKey: .action)
+    self.layout = try container.decodeIfPresent(CanvasLayoutName.self, forKey: .layout)
+    self.show = try container.decodeIfPresent(Bool.self, forKey: .show) ?? false
+  }
+}
+
 public enum TabAction: String, Codable, Sendable {
   case create
   case close

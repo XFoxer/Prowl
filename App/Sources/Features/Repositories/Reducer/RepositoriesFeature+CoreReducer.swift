@@ -647,30 +647,20 @@ extension RepositoriesFeature {
       // Pin the new tab's cwd to the worktree root: Ghostty's default new-tab
       // behavior inherits the focused surface's cwd, which is wrong when the
       // user targets a worktree from the sidebar.
-      if state.isShowingCanvas {
-        return .run { send in
-          guard
-            let tabID = await terminalClient.createTabInDirectory(
-              worktree,
-              worktree.workingDirectory
-            )
-          else {
-            return
-          }
-          await send(.newTerminalTabCreatedInCanvas(worktreeID, tabID))
-        }
-      }
       let createTab: Effect<Action> = .run { _ in
         await terminalClient.send(
           .createTabInDirectory(worktree, directory: worktree.workingDirectory))
       }
+      // Canvas focuses and reveals the new card itself when it appears, like
+      // every other tab created while Canvas is showing.
+      if state.isShowingCanvas { return createTab }
       return .merge(.send(.selectWorktree(worktreeID, focusTerminal: true)), createTab)
 
     case .newTerminalTabCreatedInCanvas(let worktreeID, let tabID):
       // A plain folder's terminal target is its synthesized worktree, so an
       // undo restoring one of its tabs must pass this guard too.
       guard state.isShowingCanvas, state.terminalWorktree(for: worktreeID) != nil else { return .none }
-      requestCanvasFocus(.tab(tabID), openedWorktreeID: worktreeID, state: &state)
+      requestCanvasFocus(.tab(tabID), viewport: .reveal, openedWorktreeID: worktreeID, state: &state)
       return .none
 
     case .focusCanvasRepository(let repositoryID):
@@ -739,6 +729,13 @@ extension RepositoriesFeature {
       return .none
 
     case .consumeCanvasCommandRequest(let id):
+      if state.pendingCanvasCommandRequest?.id == id {
+        state.pendingCanvasCommandRequest = nil
+        state.lastPerformedCanvasCommandRequestID = id
+      }
+      return .none
+
+    case .dropCanvasCommandRequest(let id):
       if state.pendingCanvasCommandRequest?.id == id {
         state.pendingCanvasCommandRequest = nil
       }

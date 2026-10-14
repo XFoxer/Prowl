@@ -21,16 +21,16 @@ struct RepositoriesFeatureTests {
       $0.nextCanvasCommandRequestID = 1
       $0.pendingCanvasCommandRequest = CanvasCommandRequest(id: 1, command: .toggleExpand)
     }
-    await store.send(.requestCanvasCommand(.arrange)) {
+    await store.send(.requestCanvasCommand(.layout(.arrange))) {
       $0.nextCanvasCommandRequestID = 2
-      $0.pendingCanvasCommandRequest = CanvasCommandRequest(id: 2, command: .arrange)
+      $0.pendingCanvasCommandRequest = CanvasCommandRequest(id: 2, command: .layout(.arrange))
     }
   }
 
   @Test func consumeCanvasCommandRequestClearsOnlyMatchingID() async {
     var initialState = RepositoriesFeature.State()
     initialState.nextCanvasCommandRequestID = 5
-    initialState.pendingCanvasCommandRequest = CanvasCommandRequest(id: 5, command: .organize)
+    initialState.pendingCanvasCommandRequest = CanvasCommandRequest(id: 5, command: .layout(.organize))
     let store = TestStore(initialState: initialState) {
       RepositoriesFeature()
     }
@@ -39,6 +39,21 @@ struct RepositoriesFeatureTests {
     await store.send(.consumeCanvasCommandRequest(4))
     // The matching id clears the request.
     await store.send(.consumeCanvasCommandRequest(5)) {
+      $0.pendingCanvasCommandRequest = nil
+      $0.lastPerformedCanvasCommandRequestID = 5
+    }
+  }
+
+  @Test func dropCanvasCommandRequestClearsWithoutMarkingItPerformed() async {
+    var initialState = RepositoriesFeature.State()
+    initialState.nextCanvasCommandRequestID = 3
+    initialState.pendingCanvasCommandRequest = CanvasCommandRequest(id: 3, command: .fit)
+    let store = TestStore(initialState: initialState) {
+      RepositoriesFeature()
+    }
+
+    await store.send(.dropCanvasCommandRequest(2))
+    await store.send(.dropCanvasCommandRequest(3)) {
       $0.pendingCanvasCommandRequest = nil
     }
   }
@@ -2110,7 +2125,34 @@ struct RepositoriesFeatureTests {
     )
   }
 
-  @Test func newTerminalTabInCanvasCreatesAndFocusesNewCanvasTab() async {
+  @Test func newTerminalTabInCanvasCreatesTabWithoutLeavingCanvas() async {
+    let worktree = makeWorktree(id: "/tmp/repo/wt", name: "wt")
+    let repository = makeRepository(id: "/tmp/repo", worktrees: [worktree])
+    let sentCommands = LockIsolated<[TerminalClient.Command]>([])
+    var initialState = makeState(repositories: [repository])
+    initialState.selection = .canvas
+
+    let store = TestStore(initialState: initialState) {
+      RepositoriesFeature()
+    } withDependencies: {
+      $0.terminalClient.send = { command in
+        sentCommands.withValue { $0.append(command) }
+      }
+    }
+
+    // Canvas focuses and reveals the new card itself when it appears.
+    await store.send(.newTerminalTab(worktree.id))
+    await store.finish()
+
+    #expect(store.state.selection == .canvas)
+    #expect(
+      sentCommands.value == [
+        .createTabInDirectory(worktree, directory: worktree.workingDirectory)
+      ]
+    )
+  }
+
+  @Test func newTerminalTabCreatedInCanvasRequestsRevealFocus() async {
     let worktree = makeWorktree(id: "/tmp/repo/wt", name: "wt")
     let repository = makeRepository(id: "/tmp/repo", worktrees: [worktree])
     let createdTabID = TerminalTabID(rawValue: UUID())
@@ -2119,26 +2161,17 @@ struct RepositoriesFeatureTests {
 
     let store = TestStore(initialState: initialState) {
       RepositoriesFeature()
-    } withDependencies: {
-      $0.terminalClient.createTabInDirectory = { actualWorktree, actualDirectory in
-        #expect(actualWorktree == worktree)
-        #expect(actualDirectory == worktree.workingDirectory)
-        return createdTabID
-      }
     }
 
-    await store.send(.newTerminalTab(worktree.id))
-    await store.receive(\.newTerminalTabCreatedInCanvas) {
+    await store.send(.newTerminalTabCreatedInCanvas(worktree.id, createdTabID)) {
       $0.nextCanvasFocusRequestID = 1
       $0.pendingCanvasFocusRequest = CanvasFocusRequest(
         id: 1,
-        target: .tab(createdTabID)
+        target: .tab(createdTabID),
+        viewport: .reveal
       )
       $0.openedWorktreeIDs = [worktree.id]
     }
-    await store.finish()
-
-    #expect(store.state.selection == .canvas)
   }
 
   @Test func newTerminalTabWithUnknownWorktreeDoesNothing() async {

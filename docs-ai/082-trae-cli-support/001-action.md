@@ -1,4 +1,4 @@
-# 081 — TraeCode CLI (`traecli`) Support: Action Log
+# 082 — TraeCode CLI (`traecli`) Support: Action Log
 
 ## Timeline
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026.10.14.1](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.14.1)
+
+This release fixes TraeCode CLI status and completion notifications in the fork.
+
+### Fixed
+
+- TraeCode CLI sessions now appear in Active Agents and report Working, Blocked, and Idle states correctly, so a running Trae task is no longer missed.
+- A finished TraeCode CLI turn now posts a completion notification to the inbox. Prowl enables the Trae TUI notification (OSC 9) when it launches `traecli`; when you start `traecli` yourself, set `tui.notifications = true`, `tui.notification_method = "osc9"`, and `tui.notification_condition = "always"` under `[tui]` in `~/.trae/traecli.toml`.
 ## [2026.10.14](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.14)
 
 This release adds TraeCode CLI support to the fork and carries in the latest upstream work.

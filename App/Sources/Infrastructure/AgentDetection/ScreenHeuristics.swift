@@ -890,19 +890,19 @@ nonisolated private func hasBrailleSpinner(_ content: String) -> Bool {
 // live region sits at the bottom of the screen: a full-width `─` composer
 // border, a column-0 `❯` prompt row (wrapped input continues on indented rows),
 // a second full-width `─` border, and the built-in status row directly below it
-// — `<model> · Context <n>% left · <cwd> ▧ Workspace Edit` when idle. While a
-// turn runs that status carries an interrupt hint (`esc to interrupt`); trust
-// and other choice dialogs replace the composer with numbered option rows whose
-// selection is marked by a column-0 `❯`. A live composer box is authoritative:
-// its status row decides the state, and everything inside the box is the user's
-// draft, so quoted transcript above it — even a verbatim trust dialog, or the
-// words `to interrupt` typed as input — can never speak for the live state. Only
-// when no composer renders do the dialog/indicator markers below the transcript
+// — `<model> · Context <n>% left · <cwd> ▧ Workspace Edit` — rendered with a
+// two-space gutter. That status row reads the same whether a turn runs or not,
+// so it is only ever evidence of an idle composer: a running turn is signalled
+// by `◆ Working… (… esc to interrupt)` rendered just above the box, with the
+// rotating `Tip:` line between it and the top border. Trust and other choice
+// dialogs replace the composer with numbered option rows whose selection is
+// marked by a column-0 `❯`. A live composer box is authoritative: its status row
+// decides the state, and everything inside the box is the user's draft, so
+// quoted transcript above it — even a verbatim trust dialog, or the words
+// `to interrupt` typed as input — can never speak for the live state. Only when
+// no composer renders do the dialog/indicator markers below the transcript
 // count. A screen that shows none of these is `.unknown`, never affirmative
-// idle. The exact working footer was not captured live (the shared TraeCode
-// app-server was serving this session's own TUI), so the working signature is
-// the binary-verified `to interrupt` hint; a typed profile stays deferred,
-// mirroring Antigravity.
+// idle. A typed profile stays deferred, mirroring Antigravity.
 nonisolated private func detectTrae(_ content: String) -> AgentRawState {
   // Raw rows keep the column so indented input can never pose as column-0
   // chrome; the trimmed text carries the signatures.
@@ -912,12 +912,13 @@ nonisolated private func detectTrae(_ content: String) -> AgentRawState {
   let lines = rows.map(\.text)
 
   // A live composer box is authoritative: a dialog would have replaced it, so
-  // while the box renders, its status row decides the state and any quoted
+  // while the box renders, its own rows decide the state and any quoted
   // transcript above it — even a verbatim trust dialog — is not evidence.
   if let composer = traeComposer(rows, lines) {
+    // The running indicator wins over the status row, which is identical in
+    // both states, so it must be read first.
+    if composer.hasWorkingIndicator { return .working }
     if let status = composer.status { return status }
-    let live = rows.indices.filter { $0 >= composer.top && !composer.inputRows.contains($0) }
-    if live.contains(where: { hasTraeInterruptHint(lines[$0]) }) { return .working }
     return .unknown
   }
 
@@ -935,9 +936,8 @@ nonisolated private func detectTrae(_ content: String) -> AgentRawState {
 /// never read as a dialog option or a running turn. Returns nil when no such box
 /// renders (a choice dialog replaces the composer).
 private struct TraeComposer {
-  let top: Int
-  let inputRows: Set<Int>
   let status: AgentRawState?
+  let hasWorkingIndicator: Bool
 }
 
 nonisolated private func traeComposer(
@@ -953,9 +953,9 @@ nonisolated private func traeComposer(
   let isBorder = { (index: Int) -> Bool in isRule(index) && lines[index].count == fullWidth }
   let isPrompt = { (index: Int) -> Bool in isColumnZero(index) && isTraePromptRow(lines[index]) }
 
-  var top: Int?
-  var inputRows = Set<Int>()
   var status: AgentRawState?
+  var hasWorkingIndicator = false
+  var found = false
   var index = rows.startIndex
   while index < rows.endIndex {
     guard isPrompt(index) else {
@@ -968,15 +968,22 @@ nonisolated private func traeComposer(
       index += 1
       continue
     }
-    if top == nil { top = index }
-    inputRows.formUnion(index...bottom)
-    if bottom + 1 < rows.endIndex, isColumnZero(bottom + 1) {
+    found = true
+    // The live status row is indented (a two-space gutter) directly below the
+    // closing border, so it is matched by signature rather than by column. Only
+    // this row — never the rows above the box — can speak for the live state.
+    if bottom + 1 < rows.endIndex {
       status = traeStatusState(lines[bottom + 1]) ?? status
     }
+    // The running indicator renders just above the box, with the rotating tip
+    // line between it and the top border, so it is only ever looked for in the
+    // few rows above this box's prompt — quoted transcript is not in range.
+    let window = max(rows.startIndex, index - 4)..<index
+    if window.contains(where: { hasTraeInterruptHint(lines[$0]) }) { hasWorkingIndicator = true }
     index = bottom + 1
   }
-  guard let resolvedTop = top else { return nil }
-  return TraeComposer(top: resolvedTop, inputRows: inputRows, status: status)
+  guard found else { return nil }
+  return TraeComposer(status: status, hasWorkingIndicator: hasWorkingIndicator)
 }
 
 /// A live choice dialog: a column-0 `❯` selection row beside a plain numbered

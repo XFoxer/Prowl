@@ -246,6 +246,59 @@ struct TraeSupportTests {
     #expect(agent.detectState(in: screen) == .idle)
   }
 
+  // MARK: - Screen detection: TraeCode CLI 0.201.7 (on-prem) fixtures
+
+  @Test func onPremIdleComposerWithIndentedStatusRowReadsAsIdle() throws {
+    let agent = try agent()
+    // Captured from the on-prem 0.201.7 TUI: the built-in status row is indented
+    // two spaces below the closing border, so it is read by signature, not column.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ➜  CBrain git:(feature/2.36) traecli
+      ╭───────────────────────────────────────────────────╮
+      │ █ ◆ ◆ █  TraeCode CLI (v0.201.7)                  │
+      ╰───────────────────────────────────────────────────╯
+
+        Tip: Use /statusline to configure which items appear in the status line.
+
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · ~/opt/CBrain · feature/2.36 · +1881 -341  ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func onPremWorkingIndicatorAboveTheComposerReadsAsWorking() throws {
+    let agent = try agent()
+    // Captured mid-turn on the on-prem 0.201.7 TUI: the status row is identical
+    // to the idle one, so only the `◆ Working… (… esc to interrupt)` line above
+    // the box — separated from it by the rotating tip — proves the running turn.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ✔ Auto-reviewer approved TraeCode CLI to run mkdir -p /tmp/probe this time
+
+      ◆ Working… (3m 55s • ↑ 20.8K tokens • esc to interrupt)
+        └ Tip: Pipe command output into `traecli exec 'summarize this'` to include stdin as context.
+      \(border)
+      ❯ Find and fix a bug in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 74% left · ~/opt/Prowl · fork/trae-cli · +1070 -49  ⛉ Auto Mode
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
+  @Test func statusRowWithoutAComposerStaysUnknown() throws {
+    let agent = try agent()
+    // The idle signature alone, with no composer box above it, is not evidence of
+    // a live idle prompt — the screen must fail toward unknown.
+    let screen = """
+      Here is the last line of output.
+      DeepSeek-V4.1-Flash · Context 100% left · /Users/me/App ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .unknown)
+  }
+
   @Test func selectionMarkWithoutAComposerOrSiblingStaysUnknown() throws {
     let agent = try agent()
     // A stray `❯`-marked numbered line with no closing composer border and no

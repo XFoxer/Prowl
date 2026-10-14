@@ -29,9 +29,9 @@
 	<key>NSSystemAdministrationUsageDescription</key>
 	<string>A program running within Prowl requires elevated privileges.</string>
 	<key>SUFeedURL</key>
-	<string>https://github.com/onevcat/Prowl/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/XFoxer/Prowl/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>S5MT6SPxcuaERBJU7MZ9tSZ+RsEj2PqB7i9DowY3OQ4=</string>
+	<string>P3EFllBJZdp3ibLJnyGNjxBwATle107s1XOIrs+RkMI=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<false/>
 	<key>SUAutomaticallyUpdate</key>

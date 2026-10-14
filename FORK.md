@@ -77,8 +77,41 @@ Keep every fork `docs-ai/` addition on a number upstream has not used yet.
   - `App/Config/Info.plist` → `SUFeedURL` = `https://github.com/XFoxer/Prowl/releases/latest/download/appcast.xml`
   - `App/Config/Info.plist` → `SUPublicEDKey` = your public key
   - private key at `~/.prowl-sparkle-private-key` (or set `SPARKLE_PRIVATE_KEY_FILE`)
+
+  Use the `generate_keys` tool that ships with the resolved Sparkle package (no Homebrew
+  install needed). With no existing key it prints the new public key; export the private key
+  with `-x`:
+
+  ```bash
+  GK="$HOME/Library/Caches/prowl-spm-cache/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys"
+  "$GK"                          # generate (first time); copy the printed public key into Info.plist
+  "$GK" -x "$HOME/.prowl-sparkle-private-key"
+  ```
+
 - **Tools**: `gh` (authenticated), `jq`, `create-dmg`, and the bundled
   `scripts/bin/generate_appcast`.
+
+  `create-dmg` comes from mise's npm backend, which installs packages with scripts skipped, so
+  its native addons are missing and it dies with `Cannot find module '../build/Release/volume.node'`
+  (or `./build/Release/xattr`). Build them once against the mise Node with the local headers:
+
+  ```bash
+  MISE_NODE="$HOME/.local/share/mise/installs/node/22.21.1/bin/node"
+  NPM_ROOT="$HOME/.local/share/mise/installs/node/22.21.1/lib/node_modules/npm"
+  NODEDIR="$HOME/.local/share/mise/installs/node/22.21.1"
+  GYP="$NPM_ROOT/node_modules/node-gyp/bin/node-gyp.js"
+  MISE_PKGS="$HOME/.local/share/mise/installs/npm-create-dmg/8.1.0/node_modules/.mise"
+  # macos-alias needs `nan` resolvable in its own node_modules
+  ( cd "$MISE_PKGS/macos-alias@0.2.12/node_modules/macos-alias"
+    mkdir -p node_modules
+    ln -sf ../../../../nan@2.29.0/node_modules/nan node_modules/nan
+    "$MISE_NODE" "$GYP" rebuild --nodedir="$NODEDIR" )
+  ( cd "$MISE_PKGS/fs-xattr@0.3.1/node_modules/fs-xattr"
+    "$MISE_NODE" "$GYP" rebuild --nodedir="$NODEDIR" )
+  ```
+
+  Keep mise's Node (22.21.1) first on `PATH` when running `create-dmg`; if Homebrew's newer
+  Node wins the lookup the addons fail with a `NODE_MODULE_VERSION` mismatch.
 - Optional: `Config/Secrets.env` (copy `Config/Secrets.env.template`) for analytics; `.env`
   (copy `.env.example`) for release environment variables. Both are gitignored.
 
@@ -102,6 +135,35 @@ Run from `fork/trae-cli` with a clean tree:
 `release.sh` derives the target repository from the `origin` remote, so it publishes to
 `XFoxer/Prowl`. It requires `build/release-notes.md` to exist and a clean working tree, and
 verifies the checkout already contains `origin/main`.
+
+Two fork-specific gotchas on the publish step:
+
+- `make bump-version` creates a **signed** tag (`git tag -s`). Without a GPG key configured
+  that fails; `release.sh` recovers by creating a lightweight tag, so the release still
+  proceeds with an unsigned tag. Configure a GPG key (`git config user.signingkey`) if you
+  want signed tags.
+- The script's final `git push --follow-tags` also tries to push every upstream annotated tag
+  that is reachable from HEAD. Those tag refs are new on the fork and their commits touch
+  `.github/workflows/`, so a fine-grained PAT without `workflow` scope rejects them and the
+  push fails. Push the branch and the release tag explicitly instead:
+
+  ```bash
+  git push origin fork/trae-cli
+  git push origin "refs/tags/v<VERSION>"
+  ```
+
+  Then finish the release exactly as the script would — note `scripts/bin/generate_appcast`
+  produces `build/appcast.xml` from `build/Prowl.app.zip` + `build/release-notes.md` (copied as
+  `Prowl.app.md`), after which the notarized `build/Prowl.dmg`, `build/Prowl.app.zip`, and
+  `build/appcast.xml` are uploaded together:
+
+  ```bash
+  gh release create "v<VERSION>" build/Prowl.dmg build/Prowl.app.zip build/appcast.xml \
+    --repo XFoxer/Prowl --title "Prowl <VERSION>" --notes-file build/release-notes.md
+  ```
+
+  (If `generate_appcast` is killed by the machine's security software, just re-run it — it is
+  idempotent and rewrites the staging `appcast.xml`.)
 
 The script performs:
 

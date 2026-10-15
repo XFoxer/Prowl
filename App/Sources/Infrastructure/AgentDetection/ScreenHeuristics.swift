@@ -894,9 +894,11 @@ nonisolated private func hasBrailleSpinner(_ content: String) -> Bool {
 // two-space gutter. That status row reads the same whether a turn runs or not,
 // so it is only ever evidence of an idle composer: a running turn is signalled
 // by `◆ Working… (… esc to interrupt)` rendered just above the box, with the
-// rotating `Tip:` line between it and the top border. Trust and other choice
-// dialogs replace the composer with numbered option rows whose selection is
-// marked by a column-0 `❯`. A live composer box is authoritative: its status row
+// rotating `Tip:` line between it and the top border. Live dialogs — a
+// directory trust prompt, a tool approval, or an elicitation form — replace the
+// composer with an indented block of numbered option rows (`❯` marks the
+// selection) above a submit/navigate footer. A live composer box is authoritative:
+// its status row
 // decides the state, and everything inside the box is the user's draft, so
 // quoted transcript above it — even a verbatim trust dialog, or the words
 // `to interrupt` typed as input — can never speak for the live state. Only when
@@ -936,9 +938,9 @@ nonisolated private func detectTrae(_ content: String) -> AgentRawState {
   }
 
   // No composer. A running indicator in the live tail beats a quoted question,
-  // and a real choice dialog carries no such indicator.
+  // and a real dialog carries no such indicator.
   if rows.indices.suffix(10).contains(where: { hasTraeInterruptHint(lines[$0]) }) { return .working }
-  if hasTraeChoiceDialog(rows, lines) { return .blocked }
+  if hasTraeLiveDialog(rows, lines) { return .blocked }
   return .unknown
 }
 
@@ -1008,17 +1010,36 @@ nonisolated private func traeComposer(
   return TraeComposer(status: status, hasWorkingIndicator: hasWorkingIndicator)
 }
 
-/// A live choice dialog: a column-0 `❯` selection row beside a plain numbered
-/// sibling in the bottom tail. Output that merely quotes a question — even as a
-/// numbered list — carries no such marked pair and cannot read as blocked.
-nonisolated private func hasTraeChoiceDialog(
+/// A live modal dialog (approval, choice, or elicitation form) replaces the
+/// composer. traecli renders it inside the live block's two-space gutter — the
+/// question header, the option rows, and the footer all carry the same indent —
+/// so the mark is matched by shape, never by column: with the composer already
+/// ruled out, an indented `❯`-marked option is live chrome. Two shapes qualify:
+/// a `❯`-marked option row with an unselected numbered sibling, or a form whose
+/// only chrome is its submit/navigate footer (a free-form field has no options).
+/// Output that merely quotes a question carries no such mark or footer and
+/// cannot read as blocked.
+nonisolated private func hasTraeLiveDialog(
   _ rows: [(raw: String, text: String)], _ lines: [String]
 ) -> Bool {
   let window = rows.indices.suffix(10)
-  guard window.contains(where: { !rows[$0].raw.hasPrefix(" ") && isTraeSelectionRow(lines[$0]) }) else {
-    return false
+  if window.contains(where: { isTraeSelectionRow(lines[$0]) }),
+    window.contains(where: { isTraeUnselectedOptionRow(lines[$0]) })
+  {
+    return true
   }
-  return window.contains(where: { isTraeUnselectedOptionRow(lines[$0]) })
+  return window.contains(where: { isTraeDialogFooterRow(lines[$0]) })
+}
+
+/// traecli's live dialog footer: `<key> to submit[_ all| answer] | esc to cancel`
+/// on approval and elicitation forms, `<keys> to navigate fields|questions` on
+/// multi-field ones. The phrases are unique to modal chrome, so a transcript
+/// line that merely mentions submitting cannot forge one by accident.
+nonisolated private func isTraeDialogFooterRow(_ line: String) -> Bool {
+  let lower = line.lowercased()
+  return lower.contains(" to submit")
+    || lower.contains("to navigate fields")
+    || lower.contains("to navigate questions")
 }
 
 nonisolated private func isTraePromptRow(_ line: String) -> Bool {

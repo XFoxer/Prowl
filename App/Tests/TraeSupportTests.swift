@@ -369,6 +369,53 @@ struct TraeSupportTests {
     #expect(agent.detectState(in: screen) == .unknown)
   }
 
+  @Test func onPremIndentedApprovalDialogReadsAsBlocked() throws {
+    let agent = try agent()
+    // Captured live on the on-prem 0.201.7 TUI: an MCP tool approval replaces the
+    // composer with a dialog rendered inside the live block's two-space gutter, so
+    // the `❯` selection mark is indented, not column-0. Requiring column 0 made the
+    // real dialog read unknown, and the state machine then kept the running turn's
+    // stale Working instead of clearing it to Blocked.
+    let border = String(repeating: "─", count: 168)
+    let screen = """
+      ◆ Calling mobile-mcp.mobile_save_screenshot({"device":"Pixel_10_Pro_XL","saveTo":"/tmp/shot1.png"})
+      \(border)
+        Field 1/1
+        Allow the mobile-mcp MCP server to run tool "mobile_save_screenshot"?
+
+        device: Pixel_10_Pro_XL
+        saveTo: /tmp/shot1.png
+
+        ❯ 1. Allow                   Run the tool and continue.
+          2. Allow for this session  Run the tool and remember this choice for this session.
+          3. Always allow            Run the tool and remember this choice for future tool calls.
+          4. Cancel                  Cancel this tool call
+        enter to submit | esc to cancel
+      """
+    #expect(agent.detectState(in: screen) == .blocked)
+  }
+
+  @Test func onPremIndentedElicitationFormReadsAsBlocked() throws {
+    let agent = try agent()
+    // An elicitation form asks the user to type a value, so it carries no numbered
+    // options and no `❯` mark — only the indented fields and the live footer. The
+    // footer vocabulary (` to submit`, `to navigate fields|questions`) is verified
+    // against the 0.201.7 binary; without it the form read unknown and a running
+    // turn's Working never cleared.
+    let border = String(repeating: "─", count: 168)
+    let screen = """
+      ◆ Calling some-mcp.some_tool({})
+      \(border)
+        Field 1/1
+        Enter a name for the new workspace
+
+        name:
+
+        ↑/↓ to navigate fields   esc to cancel
+      """
+    #expect(agent.detectState(in: screen) == .blocked)
+  }
+
   @Test func selectionMarkWithoutAComposerOrSiblingStaysUnknown() throws {
     let agent = try agent()
     // A stray `❯`-marked numbered line with no closing composer border and no

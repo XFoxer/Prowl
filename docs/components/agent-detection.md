@@ -109,9 +109,12 @@ identifies the session exactly. `TRAE_HOME` relocates the whole `~/.trae` tree
 (verified: an isolated run wrote its config and sessions under the relocated
 `cli/sessions`), so a managed Agent Profile binds the account through `TRAE_HOME`.
 
-The detector reads the bottom of the active screen. A trust dialog
-(`Do you trust the contents of this directory?`) or a numbered choice dialog
-whose selection row is marked by a column-0 `❯` is **Blocked**. An `esc to
+The detector reads the bottom of the active screen. A live dialog that replaces
+the composer is **Blocked**: a numbered option row marked with `❯` beside an
+unselected sibling, or a form whose only chrome is its submit/navigate footer
+(`… to submit … | esc to cancel`, `… to navigate fields …`). The dialog renders
+inside the live block's two-space gutter, so the mark is matched by shape, not by
+column. An `esc to
 interrupt`-style hint in the live region is **Working**. The composer's own status
 row directly under the input — `<model> · Context <n>% left · <cwd> ▧ Workspace
 Edit` — together with a `❯` prompt row on screen is **Idle**. Anything else is

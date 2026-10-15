@@ -1,6 +1,6 @@
 {
   "_comment": "Metadata for the docs/ manual. The last_synced_commit is the commit at which docs/ was last verified against the implementation; the sync-docs skill (.agents/skills/sync-docs/SKILL.md) diffs HEAD against it and updates this file. Committed to git on purpose so the baseline persists across sessions and machines. A dotfile + .json so a future docs website does not render it as a page.",
-  "last_synced_commit": "2a04661d45727b3fb2c570edf3e0df0d4a6c4cee",
+  "last_synced_commit": "1161675aeedc814f1a4d361eed48b3a7dd1374e7",
   "last_synced_date": "2026-10-15",
-  "note": "Verified the two fork fixes for this release: TraeCode CLI live-region working detection (blank-bounded run, docs/components/agent-detection.md) and notification read-state/bell consistency (docs/components/notifications.md). Both are internal robustness fixes; the documented behavior is unchanged, so no doc edits were needed."
+  "note": "Verified this release's changes: `prowl agents read` now supports TraeCode CLI (blocker text only) and the traecli screen detector reads the whole active screen, converges an unrecognized composer to Idle, and recognizes y/n and login/auth dialogs. Updated docs/components/cli.md and docs/components/agent-detection.md accordingly."
 }

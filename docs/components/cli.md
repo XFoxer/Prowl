@@ -240,8 +240,8 @@ prowl agents read "$pane" --json
 ```
 
 ### `prowl agents read <pN|pane-uuid>`
-Immediate, read-only semantic snapshot for a currently active **Codex** or
-**Claude Code** pane. It requires an explicit `pN` handle or UUID from `agents`;
+Immediate, read-only semantic snapshot for a currently active **Codex**,
+**Claude Code**, or **TraeCode CLI** pane. It requires an explicit `pN` handle or UUID from `agents`;
 it never guesses from focus, accepts no worktree/tab selector, and has no wait or
 timeout mode.
 
@@ -280,6 +280,9 @@ text; `complete` includes trusted `text` and appears only for an idle/done agent
 `unavailable`, `missing`, `incomplete`, and `too_large` retain a successful live snapshot but
 include a reason under `.data.result.error`. Prowl reads a transcript only after a fresh `exact` or `high`
 session resolution — never a `medium` candidate — and never returns partial text.
+TraeCode CLI has no semantic transcript reader, so its panes return the live snapshot
+and blocker text, but `.data.result` never reaches `complete` and `--result-only` always
+fails for them.
 
 `--max-bytes` defaults to 1 MiB and accepts up to 4 MiB. `--result-only` is mutually
 exclusive with `--json`; it writes exactly a complete trusted result to stdout, with

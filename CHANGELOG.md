@@ -1,5 +1,15 @@
 # Changelog
 
+## [2026.10.15.2](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.15.2)
+
+### New
+
+- `prowl agents read` now supports TraeCode CLI panes: it returns the pane's live status and the text of the current blocker dialog, so external tools can tell what the agent is waiting on. TraeCode CLI exposes no transcript reader, so `--result-only` still fails for it.
+
+### Fixed
+
+- TraeCode CLI panes no longer stay stuck on Working. Detection now reads the whole active screen instead of only the bottom rows, so a running turn whose indicator sits under a tall checklist is still recognized, and a pane returns to Idle as soon as its composer is live again.
+- TraeCode CLI dialogs are reported as Blocked instead of Working — permission, choice, and form prompts, plus bracketed yes/no prompts and the login/auth screens. A dialog that replaced the composer could previously be missed, leaving an agent that was waiting on you shown as running.
 ## [2026.10.15.1](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.15.1)
 
 ### Fixed

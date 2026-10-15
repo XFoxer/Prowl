@@ -426,4 +426,134 @@ struct TraeSupportTests {
       """
     #expect(agent.detectState(in: screen) == .unknown)
   }
+
+  // MARK: - Screen detection: review fixes (tail budget, convergence, y/n, auth)
+
+  @Test func tallChecklistPushingTheHintPastTheTailStillReadsAsWorking() throws {
+    let agent = try agent()
+    // The running indicator heads a blank-bounded block whose todo checklist grows
+    // without bound. When the block is taller than a 24-line tail, that fixed tail
+    // dropped the hint and the idle status row below the box decided the turn. The
+    // detector now reads the whole active screen, so the indicator survives.
+    let border = String(repeating: "─", count: 120)
+    let todo = (1...30).map { "  ◻ Checklist item number \($0) for the running plan" }
+      .joined(separator: "\n")
+    let screen = """
+      ✔ Auto-reviewer approved TraeCode CLI to run something this time
+
+      ❖ Root-causing the traecli false-Idle bug… (24m 24s • ↑ 131K tokens • esc to interrupt)
+      \(todo)
+      \(border)
+      ❯ Find and fix a bug in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 46% left · ~/opt/Prowl · fork/trae-cli · +1252 -52  ⛉ Auto Mode
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
+  @Test func composerWithAnUnrecognizedStatusRowReadsAsIdle() throws {
+    let agent = try agent()
+    // A composer renders only a live prompt. With no running hint above the box and
+    // no recognized status row below it, the turn has settled: returning unknown
+    // let the state machine retain the previous turn's stale Working.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        Some footer signature the detector does not know
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func quotedComposerAboveTheLiveIdleComposerReadsAsIdle() throws {
+    let agent = try agent()
+    // A quoted composer left in the transcript carries the running hint, but only
+    // the bottom-most prompt+border box is live. Its own blank-bounded block has no
+    // indicator and its status row is idle, so the live state is idle regardless of
+    // the quoted one above.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ◆ Working… (2m 0s • esc to interrupt)
+      ❯ A quoted composer echoed in the transcript
+      \(border)
+
+      ❯ A real live prompt
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func bracketedYesNoConfirmationReadsAsBlocked() throws {
+    let agent = try agent()
+    // traecli renders a y/n confirmation as a bracketed token at the end of the
+    // prompt line rather than a numbered menu. Missing it left a blocking question
+    // reading unknown, so a running turn's Working never cleared to Blocked.
+    let screen = """
+      The agent wants to write build/output.bin.
+
+      Overwrite build/output.bin? [y/N]
+      """
+    #expect(agent.detectState(in: screen) == .blocked)
+  }
+
+  @Test func loginScreenReadsAsBlocked() throws {
+    let agent = try agent()
+    // The interactive login/auth screens replace the composer like a dialog but use
+    // a `>` menu or free-form fields, so the numbered/`❯` shapes never match them.
+    // A distinctive header plus its Enter/Esc chrome is the live signature.
+    let screen = """
+      Sign in with browser account
+      > Sign in with Device Code
+
+      Press Enter to sign in
+      Press Esc to cancel
+      """
+    #expect(agent.detectState(in: screen) == .blocked)
+  }
+
+  @Test func transcriptMentioningLoginWithoutChromeStaysUnknown() throws {
+    let agent = try agent()
+    // The header phrase alone — echoed transcript text — is not a live login screen:
+    // without the Enter/Esc chrome it must not read as blocked.
+    let screen = """
+      The tool printed: Sign in with browser account failed.
+      Retrying the request now.
+      """
+    #expect(agent.detectState(in: screen) == .unknown)
+  }
+
+  @Test func blockerTextReadsTheLiveDialogAndIsNilOtherwise() throws {
+    let agent = try agent()
+    // `agents read` reports the blocked screen's own text. It reuses the detector's
+    // shape rules: the blank-bounded run carrying the bottom-most dialog marker.
+    let border = String(repeating: "─", count: 168)
+    let blocked = """
+      ◆ Calling mobile-mcp.mobile_save_screenshot({})
+      \(border)
+        Field 1/1
+        Allow the mobile-mcp MCP server to run tool "mobile_save_screenshot"?
+
+        device: Pixel_10_Pro_XL
+        saveTo: /tmp/shot1.png
+
+        ❯ 1. Allow                   Run the tool and continue.
+          2. Allow for this session  Run the tool and remember this choice for this session.
+          3. Always allow            Run the tool and remember this choice for future tool calls.
+          4. Cancel                  Cancel this tool call
+        enter to submit | esc to cancel
+      """
+    let text = try #require(traeBlockerText(in: agent.detectionSnapshot(from: blocked)))
+    #expect(text.contains("1. Allow"))
+    #expect(text.contains("esc to cancel"))
+
+    let idle = """
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(traeBlockerText(in: agent.detectionSnapshot(from: idle)) == nil)
+  }
 }

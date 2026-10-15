@@ -109,20 +109,27 @@ identifies the session exactly. `TRAE_HOME` relocates the whole `~/.trae` tree
 (verified: an isolated run wrote its config and sessions under the relocated
 `cli/sessions`), so a managed Agent Profile binds the account through `TRAE_HOME`.
 
-The detector reads the bottom of the active screen. A live dialog that replaces
-the composer is **Blocked**: a numbered option row marked with `❯` beside an
-unselected sibling, or a form whose only chrome is its submit/navigate footer
-(`… to submit … | esc to cancel`, `… to navigate fields …`). The dialog renders
-inside the live block's two-space gutter, so the mark is matched by shape, not by
-column. An `esc to
-interrupt`-style hint in the live region is **Working**. The composer's own status
-row directly under the input — `<model> · Context <n>% left · <cwd> ▧ Workspace
-Edit` — together with a `❯` prompt row on screen is **Idle**. Anything else is
-**unknown**, never Idle, so a screen without the live composer cannot forge an
-idle reading. The exact working footer could not be captured live (the shared
-TraeCode app-server was serving this session's own TUI), so the working signature
-is the binary-verified `to interrupt` hint; a typed screen profile is deferred,
-mirroring Antigravity.
+The detector reads the whole active screen — not a bottom tail — and anchors on the
+bottom-most composer box by shape: a full-width `─` separator, a column-0 `❯` prompt
+row (wrapped input continues on indented rows), and the status row directly below it.
+Everything inside the box is the user's draft, so a quoted transcript above it — even
+a verbatim dialog — is not evidence. The live block above the box is read as a single
+blank-bounded run with no row cap, so a tall todo checklist cannot push the running
+hint out of view: an `esc to interrupt`-style hint in that run is **Working**. With no
+such hint, the composer's own status row — `<model> · Context <n>% left · <cwd> ▧
+Workspace Edit` — is **Idle**, and an unrecognized status row under a live composer is
+also **Idle** rather than unknown, so a running turn's Working never lingers.
+
+A live dialog that replaces the composer is **Blocked**. Four shapes are matched by
+shape, not column (the dialog renders inside the live block's two-space gutter): a
+numbered option row marked with `❯` beside an unselected sibling; a form whose only
+chrome is its submit/navigate footer (`… to submit … | esc to cancel`, `… to navigate
+fields …`); a bracketed y/n confirmation (`… [y/N]`); and the interactive login/auth
+screens (a verified header phrase plus its Enter/Esc chrome). Anything else is
+**unknown**, never Idle, so a screen without the live composer cannot forge an idle
+reading. A typed screen profile is still deferred — the working signature is the
+binary-verified `to interrupt` hint — but `prowl agents read` extracts the live dialog
+text as its blocker for a TraeCode CLI pane.
 
 TraeCode CLI currently uses screen state and cooperative delivery, without a
 managed hook channel or transcript reader. Its TUI notification is off by

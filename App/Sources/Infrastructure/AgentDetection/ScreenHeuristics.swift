@@ -905,16 +905,29 @@ nonisolated private func hasBrailleSpinner(_ content: String) -> Bool {
 // idle. A typed profile stays deferred, mirroring Antigravity.
 nonisolated private func detectTrae(_ content: String) -> AgentRawState {
   // Raw rows keep the column so indented input can never pose as column-0
-  // chrome; the trimmed text carries the signatures.
-  let rows = content.split(separator: "\n", omittingEmptySubsequences: false)
-    .map { (raw: String($0), text: $0.trimmingCharacters(in: .whitespaces)) }
-    .filter { !$0.text.isEmpty }
+  // chrome; the trimmed text carries the signatures. A parallel flag records
+  // whether a blank raw line preceded each kept row, so the live block above the
+  // composer can be read by shape (blank-bounded) instead of a fixed row count.
+  var rows: [(raw: String, text: String)] = []
+  var blankBefore: [Bool] = []
+  var afterBlank = true
+  for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
+    let raw = String(line)
+    let text = raw.trimmingCharacters(in: .whitespaces)
+    if text.isEmpty {
+      afterBlank = true
+      continue
+    }
+    rows.append((raw: raw, text: text))
+    blankBefore.append(afterBlank)
+    afterBlank = false
+  }
   let lines = rows.map(\.text)
 
   // A live composer box is authoritative: a dialog would have replaced it, so
   // while the box renders, its own rows decide the state and any quoted
   // transcript above it — even a verbatim trust dialog — is not evidence.
-  if let composer = traeComposer(rows, lines) {
+  if let composer = traeComposer(rows, lines, blankBefore) {
     // The running indicator wins over the status row, which is identical in
     // both states, so it must be read first.
     if composer.hasWorkingIndicator { return .working }
@@ -941,7 +954,7 @@ private struct TraeComposer {
 }
 
 nonisolated private func traeComposer(
-  _ rows: [(raw: String, text: String)], _ lines: [String]
+  _ rows: [(raw: String, text: String)], _ lines: [String], _ blankBefore: [Bool]
 ) -> TraeComposer? {
   let isColumnZero = { (index: Int) -> Bool in !rows[index].raw.hasPrefix(" ") }
   // The composer separator is the longest column-0 `─` rule on screen; a
@@ -975,10 +988,19 @@ nonisolated private func traeComposer(
     if bottom + 1 < rows.endIndex {
       status = traeStatusState(lines[bottom + 1]) ?? status
     }
-    // The running indicator renders just above the box, with the rotating tip
-    // line between it and the top border, so it is only ever looked for in the
-    // few rows above this box's prompt — quoted transcript is not in range.
-    let window = max(rows.startIndex, index - 4)..<index
+    // The running indicator renders at the top of the live block above the box:
+    // it and every row under it — a rotating `Tip:`, the agent's todo checklist,
+    // a wrapped indicator — form the contiguous non-blank run directly above this
+    // box's prompt, separated from the transcript by a blank line. Reading that
+    // whole run keeps a tall block (a multi-item plan) from pushing the hint past
+    // a fixed row count, which would let the idle status row decide a running
+    // turn. The run is bounded by the blank separator or, absent one, the sliced
+    // tail that `detectionScreenText` already trimmed.
+    var start = index
+    while start > rows.startIndex, !blankBefore[start] {
+      start -= 1
+    }
+    let window = start..<index
     if window.contains(where: { hasTraeInterruptHint(lines[$0]) }) { hasWorkingIndicator = true }
     index = bottom + 1
   }

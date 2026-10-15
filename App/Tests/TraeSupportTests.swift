@@ -313,6 +313,51 @@ struct TraeSupportTests {
     #expect(agent.detectState(in: screen) == .working)
   }
 
+  @Test func todoChecklistBetweenIndicatorAndComposerReadsAsWorking() throws {
+    let agent = try agent()
+    // Captured mid-turn on the on-prem 0.201.7 TUI while the agent's todo widget
+    // was live: the `❖ … (esc to interrupt)` indicator heads a multi-row block —
+    // the running turn, then its checklist — that sits several rows above the box,
+    // so the block, not a fixed few rows above the prompt, carries the hint. The
+    // status row below the box is identical to the idle one, so missing the
+    // indicator reads a running turn as idle.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ✔ Auto-reviewer approved TraeCode CLI to run something this time
+
+      ❖ Root-causing the traecli false-Idle bug… (24m 24s • ↑ 131K tokens • esc to interrupt)
+        └ ■ Root-cause why the agent shows idle after a long idle
+          ◻ Fix the detector in ScreenHeuristics.swift
+          ◻ Add fixtures in TraeSupportTests.swift
+          ◻ Run make build-app and make check
+      \(border)
+      ❯ Find and fix a bug in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 46% left · ~/opt/Prowl · fork/trae-cli · +1252 -52  ⛉ Auto Mode
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
+  @Test func todoChecklistAndWrappedTipAboveTheComposerReadAsWorking() throws {
+    let agent = try agent()
+    // The live block may also carry the rotating tip under the indicator, and at
+    // a narrow width the indicator and the tip wrap — the hint still heads the
+    // same blank-bounded run, so the running turn must not fall back to the idle
+    // status row.
+    let border = String(repeating: "─", count: 80)
+    let screen = """
+      ◆ Working… (12s • esc to interrupt) · 1 shell running
+      to manage
+        └ Tip: Press Tab to queue a message when a task is
+      running; otherwise it sends immediately.
+      \(border)
+      ❯ Improve documentation in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 96% left · ~/opt/Prowl · fork/trae-cli  ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
   @Test func statusRowWithoutAComposerStaysUnknown() throws {
     let agent = try agent()
     // The idle signature alone, with no composer box above it, is not evidence of

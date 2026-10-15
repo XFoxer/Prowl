@@ -123,27 +123,25 @@ extension WorktreeTerminalState {
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !(trimmedTitle.isEmpty && trimmedBody.isEmpty) else { return }
-    let isWorktreeSelected = isSelected()
-    let isWorkflowViewed = treatAsViewedWhenWorktreeIsVisible && isViewingWorktree()
+    // The stored read state and the banner suppression share one predicate, so the
+    // bell and the banner agree. `isViewedSurface` requires a key, visible window:
+    // a task that finishes while Prowl is in the background must stay unread.
+    let isViewed =
+      treatAsViewedWhenWorktreeIsVisible ? isViewingWorktree() : isViewedSurface(surfaceId)
     if notificationsEnabled {
       let previousHasUnseen = hasUnseenNotification
-      let isRead =
-        treatAsViewedWhenWorktreeIsVisible
-        ? isWorkflowViewed
-        : (isWorktreeSelected && isFocusedSurface(surfaceId))
       notifications.insert(
         WorktreeTerminalNotification(
           surfaceId: surfaceId,
           title: trimmedTitle,
           body: trimmedBody,
           createdAt: Date(),
-          isRead: isRead, workflowRunID: workflowRunID
+          isRead: isViewed, workflowRunID: workflowRunID
         ),
         at: 0
       )
       emitNotificationIndicatorIfNeeded(previousHasUnseen: previousHasUnseen)
     }
-    let isViewed = treatAsViewedWhenWorktreeIsVisible ? isWorkflowViewed : isViewedSurface(surfaceId)
     onNotificationReceived?(surfaceId, trimmedTitle, trimmedBody, isViewed)
   }
 

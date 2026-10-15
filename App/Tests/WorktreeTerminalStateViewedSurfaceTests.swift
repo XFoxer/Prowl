@@ -43,6 +43,28 @@ struct WorktreeTerminalStateViewedSurfaceTests {
     #expect(!state.isViewedSurface(UUID()))
   }
 
+  @Test(arguments: ViewingCondition.allCases)
+  func desktopNotificationStaysUnreadUnlessItsSurfaceIsViewed(condition: ViewingCondition) {
+    // A turn completion arrives as a desktop notification on this default path.
+    // It must read as seen only when the user is actually looking at the pane —
+    // selected worktree, key and visible window, focused surface — so a task that
+    // finishes in the background lights the bell instead of being silently read.
+    let (state, surfaceId) = makeViewedState()
+    apply(condition, to: state)
+    var viewed: [Bool] = []
+    state.onNotificationReceived = { _, _, _, isViewed in viewed.append(isViewed) }
+
+    state.appendNotification(title: "Task complete", body: "Done", surfaceId: surfaceId)
+
+    let isViewed = condition == .viewed
+    #expect(state.notifications.count == 1)
+    #expect(state.notifications.first?.isRead == isViewed)
+    // The bell highlight reads the same unread flag, and the banner suppression
+    // reads the same viewed flag, so the two can never disagree.
+    #expect(state.hasUnseenNotification == !isViewed)
+    #expect(viewed == [isViewed])
+  }
+
   @Test func inactiveFocusedCompletionPollRemainsUnread() async {
     let fixture = makeDetectionFixture()
     fixture.state.lastWindowIsKey = false

@@ -9,6 +9,7 @@
 | 2026-10-12 | Green: `make build-app`, `make check`, CLI build/unit/smoke/integration, focused app suites (`TraeSupportTests`, `AgentClassifierTests`, `AgentRuntimeAdapterTests`, `AgentSessionResolverTests`, `ScreenHeuristicsTests`) | branch `feature/traecli-support` |
 | 2026-10-14 | Live on-prem 0.201.7 TUI showed the detector missed the two-space-indented status row and the `◆ Working…` line above the composer; rewrote `detectTrae` to match the status row by signature and read the working indicator first | branch `fork/trae-cli` |
 | 2026-10-14 | A finished traecli turn never reached Prowl's inbox because the CLI's `tui.notifications` defaults off; `TraeRuntimeAdapter.makeStartInvocation` now injects `-c tui.notifications=true -c tui.notification_method=osc9 -c tui.notification_condition=always` (values verified accepted by the on-prem binary) | branch `fork/trae-cli` |
+| 2026-10-15 | Active Agents showed a running traecli turn as Idle/Done: the detector searched for the `esc to interrupt` hint in a fixed four rows above the prompt, but traecli heads the live block with a multi-row todo checklist (or a wrapped indicator/tip) that pushes the hint five or more rows up, so the idle status row decided. `traeComposer` now reads the hint from the blank-bounded non-blank run directly above the prompt instead | branch `fork/trae-cli` |
 
 ## Outcome & current state (as of 2026-10-12)
 

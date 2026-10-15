@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026.10.15.1](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.15.1)
+
+### Fixed
+
+- Fixed TraeCode CLI agents being reported as **Idle** while a turn was still running — for example a session left idle for a long time that then starts a new task, or a running turn whose output sits under a tall checklist. Detection now reads the whole live region above the composer instead of a fixed number of rows.
+- Fixed the toolbar notification bell not highlighting when an agent finished while Prowl was in the background or the pane was not focused. The completion now stays unread and lights the bell until you focus it.
 ## [2026.10.14.1](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.14.1)
 
 This release fixes TraeCode CLI status and completion notifications in the fork.

@@ -115,7 +115,9 @@ row (wrapped input continues on indented rows), and the status row directly belo
 Everything inside the box is the user's draft, so a quoted transcript above it — even
 a verbatim dialog — is not evidence. The live block above the box is read as a single
 blank-bounded run with no row cap, so a tall todo checklist cannot push the running
-hint out of view: an `esc to interrupt`-style hint in that run is **Working**. With no
+hint out of view: an `esc to interrupt`-style hint in that run is **Working**, except
+traecli's startup MCP boot progress line (`Starting MCP servers (n/m): … esc to
+interrupt`), which reuses that footer but is startup work, not a turn. With no
 such hint, the composer's own status row — `<model> · Context <n>% left · <cwd> ▧
 Workspace Edit` — is **Idle**, and an unrecognized status row under a live composer is
 also **Idle** rather than unknown, so a running turn's Working never lingers.

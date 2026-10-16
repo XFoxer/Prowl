@@ -1125,9 +1125,22 @@ nonisolated private func isTraeNumberedOption(_ text: String) -> Bool {
   return text[text.index(after: dot)...].hasPrefix(" ")
 }
 
-/// Binary-verified `" to interrupt"` (the fork reuses Codex's interrupt footer).
+/// Binary-verified `" to interrupt"` (the fork reuses Codex's interrupt footer),
+/// minus the boot progress lines that reuse the same footer. A cold start shows
+/// `✦ Starting MCP servers (0/3): … (0s • esc to interrupt)` above an otherwise
+/// idle composer; counting it as a running turn flashed Working during startup
+/// and let the settle to the idle composer earn a spurious Done badge.
 nonisolated private func hasTraeInterruptHint(_ line: String) -> Bool {
-  line.lowercased().contains("to interrupt")
+  let lower = line.lowercased()
+  guard lower.contains("to interrupt") else { return false }
+  return !isTraeStartupProgressLine(lower)
+}
+
+/// traecli's boot progress line (`✦ Starting MCP servers (n/m): <names> (0s •
+/// esc to interrupt)`): startup work, not an agent turn, so it must never
+/// decide the live state.
+nonisolated private func isTraeStartupProgressLine(_ lowercasedLine: String) -> Bool {
+  lowercasedLine.contains("starting mcp server")
 }
 
 /// The composer's status row: the interrupt hint while a turn runs, otherwise

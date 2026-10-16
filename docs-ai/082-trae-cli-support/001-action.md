@@ -12,6 +12,7 @@
 | 2026-10-15 | Active Agents showed a running traecli turn as Idle/Done: the detector searched for the `esc to interrupt` hint in a fixed four rows above the prompt, but traecli heads the live block with a multi-row todo checklist (or a wrapped indicator/tip) that pushes the hint five or more rows up, so the idle status row decided. `traeComposer` now reads the hint from the blank-bounded non-blank run directly above the prompt instead | branch `fork/trae-cli` |
 | 2026-10-15 | Live capture: an MCP tool approval (and an elicitation form) read as Working instead of Blocked. The dialog replaces the composer and is rendered inside the live block's two-space gutter, so the `❯` selection mark is indented, not column-0; `hasTraeChoiceDialog` required column 0, returned false, and the state machine kept the stale Working. `hasTraeLiveDialog` now matches the mark by shape (indent-agnostic) and also accepts a form footer (` to submit`, `to navigate fields/questions`) for option-less input forms | branch `fork/trae-cli` |
 | 2026-10-15 | Closed the three residual gaps from the traecli detection audit. (1) `detectionScreenText` now reads the whole active screen for `.trae` (not the 24-line tail) and `traeComposer` treats only the bottom-most composer box as live, so a tall todo checklist can no longer push the running hint out of the slice and read a running turn as idle. (2) A composer with no running hint and no recognized status row now reads Idle instead of unknown, so the state machine cannot retain a stale Working. (3) `hasTraeLiveDialog` also recognizes bracketed y/n confirmations and the interactive login/auth screens (verified header phrase plus Enter/Esc chrome) as Blocked. Added `traeBlockerText` and opened `prowl agents read` to `trae` panes (blocker text only; no semantic result reader) | branch `fork/trae-cli` |
+| 2026-10-16 | A cold start showed a spurious Done badge after traecli finished booting. traecli heads the live block with an MCP boot progress line (`✧ Starting MCP servers (1/3): XcodeBuildMCP, code-review-graph (0s • esc to interrupt)`) above an otherwise idle composer; it reuses the interrupt footer, so `hasTraeInterruptHint` read the boot phase as Working and the settle to the idle composer earned a legacy `working → idle` Done. `hasTraeInterruptHint` now excludes that boot line via `isTraeStartupProgressLine` (scoped to the `starting mcp server` phrase, so a real turn titled `Starting …` still reads Working), so startup settles straight to Idle with no transition to reward | branch `fork/trae-cli` |
 
 ## Outcome & current state (as of 2026-10-12)
 
@@ -44,8 +45,10 @@ hook channel. What exists now:
   an unselected sibling, a form footer (` to submit`, `to navigate fields`), a
   bracketed y/n prompt, or the login/auth screens — reads Blocked (see the 2026-10-15
   live-capture row: the mark is matched by shape, not column); an
-  `esc to interrupt` hint in the blank-bounded block above the box reads Working; the
-  `❯` composer with a `<model> · Context <n>% left · <cwd> ▧ Workspace Edit` status
+  `esc to interrupt` hint in the blank-bounded block above the box reads Working, except
+  the startup MCP boot progress line that reuses the same footer (see the 2026-10-16
+  row); the `❯` composer with a `<model> · Context <n>% left · <cwd> ▧ Workspace Edit`
+  status
   row reads Idle, and an unrecognized status row under a live composer also reads Idle
   rather than unknown. The `detectLegacyScreen` switch was split into a head/tail pair
   to stay under SwiftLint's cyclomatic-complexity budget.

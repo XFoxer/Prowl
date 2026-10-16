@@ -358,6 +358,46 @@ struct TraeSupportTests {
     #expect(agent.detectState(in: screen) == .working)
   }
 
+  @Test func mcpServerBootLineAboveAnIdleComposerReadsAsIdle() throws {
+    let agent = try agent()
+    // Cold start: before the session is ready traecli heads the live block with a
+    // boot progress line that reuses the interrupt footer (`✧ Starting MCP servers
+    // (1/3): … (0s • esc to interrupt)`) while the composer below is the ordinary
+    // idle box. Reading it as a running turn flashed Working through startup and
+    // then let the settle to idle earn a spurious Done badge.
+    let border = String(repeating: "─", count: 168)
+    let screen = """
+      ╭───────────────────────────────────────────────────╮
+      │ █ ◆ ◆ █  TraeCode CLI (v0.201.7)                  │
+      ╰───────────────────────────────────────────────────╯
+
+        Tip: Press Ctrl+O to open the transcript view.
+
+      ✧ Starting MCP servers (1/3): XcodeBuildMCP, code-review-graph (0s • esc to interrupt)
+      \(border)
+      ❯ Improve documentation in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · /private/tmp/trae-cold2  ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func interruptHintWithAnUnrelatedStartingTitleStillReadsAsWorking() throws {
+    let agent = try agent()
+    // The boot-line exclusion is scoped to the MCP progress phrase, not to
+    // `Starting`: a real turn indicator whose title happens to begin with
+    // `Starting` must still read as Working.
+    let border = String(repeating: "─", count: 168)
+    let screen = """
+      ◆ Starting the refactor… (12s • esc to interrupt)
+      \(border)
+      ❯ Find and fix a bug in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 74% left · ~/opt/Prowl  ⛉ Auto Mode
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
   @Test func statusRowWithoutAComposerStaysUnknown() throws {
     let agent = try agent()
     // The idle signature alone, with no composer box above it, is not evidence of

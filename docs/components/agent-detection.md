@@ -131,6 +131,15 @@ confirms a settled turn; a Working or Blocked frame drops the hold, and an unrea
 frame neither confirms nor cancels it. Idle → Working, Working → Blocked, and settling
 from unknown stay immediate, so a starting turn and a dialog are never delayed.
 
+traecli 0.209.1 can also hold **background shells** (`/ps to manage`). While one runs,
+a *settled* turn's footer becomes `◇ <n> background shell running… you can still chat ·
+/ps to manage` — the interrupt hint and the elapsed counter are both gone — so the pane
+reads **Idle** with work still in flight, and it returns to Working only when the agent
+starts the turn that collects the shell. That is deliberate, not a miss: the agent has
+handed control back, only the shell is running, and a running background shell is
+therefore not Working evidence. A turn that is *still* streaming keeps its hint and
+appends the same segment (`… esc to interrupt) · 1 shell running… · /ps to manage`).
+
 A live dialog that replaces the composer is **Blocked**. Four shapes are matched by
 shape, not column (the dialog renders inside the live block's two-space gutter): a
 numbered option row marked with `❯` beside an unselected sibling; a form whose only

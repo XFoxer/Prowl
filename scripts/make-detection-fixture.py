@@ -98,6 +98,7 @@ DETECTED_AGENTS = (
     "qwen",
     "grok",
     "antigravity",
+    "trae",
 )
 
 

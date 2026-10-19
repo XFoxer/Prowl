@@ -100,12 +100,71 @@ stays Working.
 Antigravity currently uses screen state and cooperative delivery, without a
 managed hook channel or transcript reader.
 
+### TraeCode CLI
+
+TraeCode CLI (`traecli`, verified 0.201.7) is a Codex-CLI fork: it reuses Codex's
+session-store shape under `~/.trae/cli/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`,
+held open for the life of an interactive session, so the open rollout file
+identifies the session exactly. `TRAE_HOME` relocates the whole `~/.trae` tree
+(verified: an isolated run wrote its config and sessions under the relocated
+`cli/sessions`), so a managed Agent Profile binds the account through `TRAE_HOME`.
+
+The detector reads the whole active screen — not a bottom tail — and anchors on the
+bottom-most composer box by shape: a full-width `─` separator, a column-0 `❯` prompt
+row (wrapped input continues on indented rows), and the status row directly below it.
+Everything inside the box is the user's draft, so a quoted transcript above it — even
+a verbatim dialog — is not evidence. The live block above the box is read as a single
+blank-bounded run with no row cap, so a tall todo checklist cannot push the running
+hint out of view: an `esc to interrupt`-style hint in that run is **Working**, except
+traecli's startup MCP boot progress line (`Starting MCP servers (n/m): … esc to
+interrupt`), which reuses that footer but is startup work, not a turn. With no
+such hint, the composer's own status row — `<model> · Context <n>% left · <cwd> ▧
+Workspace Edit` — is **Idle**, and an unrecognized status row under a live composer is
+also **Idle** rather than unknown, so a running turn's Working never lingers. That
+status row is identical in both states, which leaves the running footer as the only
+mark that separates them, and traecli repaints the live region on its own clock
+(0.209.1 draws as slowly as once a second while a turn streams). A lone **Idle** frame
+over a **Working** pane is therefore held for one poll instead of published: the frame
+can be a repaint gap, and reading it flipped the pane Working → Idle → Working (and
+earned a spurious Done badge on an unviewed pane). The next poll's Idle verdict
+confirms a settled turn; a Working or Blocked frame drops the hold, and an unreadable
+frame neither confirms nor cancels it. Idle → Working, Working → Blocked, and settling
+from unknown stay immediate, so a starting turn and a dialog are never delayed.
+
+traecli 0.209.1 can also hold **background shells** (`/ps to manage`). While one runs,
+a *settled* turn's footer becomes `◇ <n> background shell running… you can still chat ·
+/ps to manage` — the interrupt hint and the elapsed counter are both gone — so the pane
+reads **Idle** with work still in flight, and it returns to Working only when the agent
+starts the turn that collects the shell. That is deliberate, not a miss: the agent has
+handed control back, only the shell is running, and a running background shell is
+therefore not Working evidence. A turn that is *still* streaming keeps its hint and
+appends the same segment (`… esc to interrupt) · 1 shell running… · /ps to manage`).
+
+A live dialog that replaces the composer is **Blocked**. Four shapes are matched by
+shape, not column (the dialog renders inside the live block's two-space gutter): a
+numbered option row marked with `❯` beside an unselected sibling; a form whose only
+chrome is its submit/navigate footer (`… to submit … | esc to cancel`, `… to navigate
+fields …`); a bracketed y/n confirmation (`… [y/N]`); and the interactive login/auth
+screens (a verified header phrase plus its Enter/Esc chrome). Anything else is
+**unknown**, never Idle, so a screen without the live composer cannot forge an idle
+reading. A typed screen profile is still deferred — the working signature is the
+binary-verified `to interrupt` hint — but `prowl agents read` extracts the live dialog
+text as its blocker for a TraeCode CLI pane.
+
+TraeCode CLI currently uses screen state and cooperative delivery, without a
+managed hook channel or transcript reader. Its TUI notification is off by
+default, so a Prowl-launched session has `tui.notifications=true`,
+`tui.notification_method=osc9`, and `tui.notification_condition=always` injected
+as `-c` overrides; otherwise a finished turn never reaches the notification
+inbox (see [notifications](notifications.md)). A manually launched `traecli`
+needs the same values under `[tui]` in `~/.trae/traecli.toml`.
+
 ## Agents it recognizes
 
 Claude (Claude Code), Codex, Gemini, Cursor, Cline, OpenCode, GitHub Copilot,
 Kimi, Droid, Amp, Pi (`pi`), Oh My Pi (`omp`, `oh-my-pi`), Qoder CLI (`qodercli`),
-Qwen Code (`qwen`), Grok Build (`grok`), Devin (`devin`), and Antigravity
-(`agy`). Detection covers
+Qwen Code (`qwen`), Grok Build (`grok`), Devin (`devin`), Antigravity
+(`agy`), and TraeCode CLI (`traecli`). Detection covers
 common wrappers (node, python, bun, bash, etc.) so agents launched indirectly are
 still found. Pi and Oh My Pi are independent detected agents. Pi recognizes its
 own minimal working/idle cues, including its built-in braille-prefixed `Working...`
@@ -391,11 +450,14 @@ a successful read reports recovery once after any failure, including a throttled
 Continuity-loss warnings report the post-reset cursor count and a bounded error kind/code. These logs contain no transcript or screen content.
 
 Detection tolerates several consecutive process-probe misses before declaring an
-agent gone. Screen-only state is deterministic: a recognized Working, Blocked, or
-Idle frame takes effect on the next active scan, without a time-based Working hold or
-generic screen-motion inference. Viewer overlays (Claude's transcript / history-search
-views) are an explicit exception: their chrome covers the live status area, so those
-frames keep the last trusted state instead of forcing Idle.
+agent gone. Screen-only state is deterministic: a recognized Working or Blocked frame
+takes effect on the next active scan, without a time-based Working hold or generic
+screen-motion inference. One exception covers agents whose Working evidence is
+screen-only (`DetectedAgent.requiresConfirmedIdleScreen`, currently `trae`): an Idle
+frame over a Working pane is applied only once the following poll reports Idle too, so
+a single mid-repaint frame cannot end a turn. Viewer overlays (Claude's transcript /
+history-search views) are another exception: their chrome covers the live status area,
+so those frames keep the last trusted state instead of forcing Idle.
 
 ## Remote agents over SSH
 

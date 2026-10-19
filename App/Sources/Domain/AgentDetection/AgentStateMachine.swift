@@ -80,6 +80,17 @@ nonisolated struct AgentStateMachine: Sendable {
   private var hasLogProvider = false
   private var screen = AgentScreenDetection(state: .unknown, reason: .noRuleMatched)
   private var stableScreen: AgentRawState = .unknown
+  /// Set by the coordinator for agents whose screen verdicts need one poll of
+  /// confirmation before they may end a working turn
+  /// (`DetectedAgent.requiresConfirmedIdleScreen`). Only a lone Idle verdict over a
+  /// Working stable screen is held: a screen-heuristic agent repaints its live region
+  /// on its own clock, so that one frame can be a repaint gap rather than a settled
+  /// turn, and no other evidence exists to reconcile it against.
+  var requiresConfirmedIdleScreen = false
+  /// A screen Idle verdict held for the confirmation described above. Any readable
+  /// verdict that is not Idle releases the hold (`unknown` renders no verdict, so it
+  /// neither confirms nor cancels); the next Idle verdict applies it.
+  private var heldIdleScreen = false
   private var suppressedScreen: AgentScreenDetection?
   private var screenContentID: Int?
   private var suppressedContentID: Int?
@@ -198,7 +209,16 @@ nonisolated struct AgentStateMachine: Sendable {
   private mutating func observeScreen(_ detection: AgentScreenDetection, contentID: Int?) {
     screen = detection
     screenContentID = contentID
-    if detection.state != .unknown { stableScreen = detection.state }
+    if detection.state != .unknown {
+      if requiresConfirmedIdleScreen, detection.state == .idle, stableScreen == .working,
+        !heldIdleScreen
+      {
+        heldIdleScreen = true
+      } else {
+        heldIdleScreen = false
+        stableScreen = detection.state
+      }
+    }
     if suppressedScreen != detection || suppressedContentID != contentID { suppressedScreen = nil }
   }
 

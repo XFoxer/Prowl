@@ -145,6 +145,9 @@ final class AgentDetectionCoordinator {
     {
       reset()
       self.agent = agent
+      // Agents whose Working evidence is screen-only get one poll of confirmation
+      // before a lone Idle verdict may end their turn (see `AgentStateMachine`).
+      machine.requiresConfirmedIdleScreen = agent.requiresConfirmedIdleScreen
       self.process = process
       self.configRoot = configRoot
       // Providers read local files and descriptors, so only a local generation gets one.

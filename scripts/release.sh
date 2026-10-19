@@ -431,8 +431,12 @@ git push --follow-tags
 
 log "creating GitHub Release..."
 UPLOAD_FILES=("$DMG_PATH" "$ZIP_PATH" "build/appcast.xml")
-DELTA_FILES=( $(find build -name "*.delta" -type f 2>/dev/null || true) )
-UPLOAD_FILES+=("${DELTA_FILES[@]}")
+# Sparkle writes .delta files only when it can diff against the previous release.
+# Expand an empty array rather than appending one: macOS ships bash 3.2, where
+# `"${DELTA_FILES[@]}"` on an empty array is an unbound variable under `set -u`.
+while IFS= read -r delta; do
+  [[ -n "$delta" ]] && UPLOAD_FILES+=("$delta")
+done < <(find build -name "*.delta" -type f 2>/dev/null || true)
 
 # Delete existing release if present (idempotent re-run)
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then

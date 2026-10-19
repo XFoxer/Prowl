@@ -1,6 +1,6 @@
 {
   "_comment": "Metadata for the docs/ manual. The last_synced_commit is the commit at which docs/ was last verified against the implementation; the sync-docs skill (.agents/skills/sync-docs/SKILL.md) diffs HEAD against it and updates this file. Committed to git on purpose so the baseline persists across sessions and machines. A dotfile + .json so a future docs website does not render it as a page.",
-  "last_synced_commit": "60d92a97628d84de15f39201957c0b90610179ff",
-  "last_synced_date": "2026-10-17",
-  "note": "Codex OSC 7501 verified (#922) updated the manual in its PR. Carried to the upstream tip merged on 2026-10-19; the fork's TraeCode CLI manual updates shipped with 2026.10.15.x."
+  "last_synced_commit": "9a75425f6f988f39eabaf1493f94e35248e19e31",
+  "last_synced_date": "2026-10-19",
+  "note": "Merged upstream/main through v2026.10.17 (85 commits): its own docs commits carry the SSH remote-agent manual (docs/components/agent-detection.md, active-agents.md, terminal.md) and the GitHub rate-limit and Codex OSC 7501 copy. The fork's TraeCode CLI notes (whole-screen detection, one-poll Idle confirmation, background-shell phase) are in the same file."
 }

@@ -23,6 +23,59 @@ struct AgentStateMachineTests {
     }
   }
 
+  @Test func loneIdleScreenFrameCannotEndAConfirmedWorkingTurn() {
+    // traecli repaints its live region on the terminal's own clock (0.209.1 draws as
+    // slowly as once a second while a turn streams), so a single Idle frame can be a
+    // repaint gap: the running footer is the only Working evidence, and the composer's
+    // status row reads the same in both states. One frame must not flip the pane.
+    var machine = AgentStateMachine()
+    machine.requiresConfirmedIdleScreen = true
+    // Settling from unknown is immediate: there is no Working state to protect.
+    #expect(machine.receive(screen(.idle), now: 0).state == .idle)
+    #expect(machine.receive(screen(.working), now: 1).state == .working)
+
+    // A lone Idle frame is held, and a Working frame drops it without a transition.
+    #expect(machine.receive(screen(.idle), now: 2).state == .working)
+    #expect(machine.receive(screen(.working), now: 3).state == .working)
+    #expect(machine.receive(screen(.idle), now: 4).state == .working)
+    #expect(machine.receive(screen(.working), now: 5).state == .working)
+
+    // Two consecutive Idle verdicts confirm a settled turn.
+    #expect(machine.receive(screen(.idle), now: 6).state == .working)
+    #expect(machine.receive(screen(.idle), now: 7).state == .idle)
+  }
+
+  @Test func idleConfirmationGatesOnlyTheWorkingEdge() {
+    var machine = AgentStateMachine()
+    machine.requiresConfirmedIdleScreen = true
+    // Idle → Working stays immediate so a starting turn never lags.
+    #expect(machine.receive(screen(.idle), now: 0).state == .idle)
+    #expect(machine.receive(screen(.working), now: 1).state == .working)
+    // Working → Blocked stays immediate: a dialog is chrome, not a repaint gap.
+    #expect(machine.receive(screen(.blocked), now: 2).state == .blocked)
+    // A dialog closing back onto the composer is a real transition.
+    #expect(machine.receive(screen(.idle), now: 3).state == .idle)
+  }
+
+  @Test func unreadableScreenNeitherConfirmsNorCancelsTheIdleHold() {
+    var machine = AgentStateMachine()
+    machine.requiresConfirmedIdleScreen = true
+    _ = machine.receive(screen(.working), now: 0)
+    #expect(machine.receive(screen(.idle), now: 1).state == .working)
+    // `unknown` renders no verdict, so it neither confirms the hold nor re-arms it.
+    // Re-arming would strand a pane whose screen alternates Idle and unreadable on a
+    // stale Working, which is the failure that reading a hint-less composer as Idle
+    // exists to avoid.
+    #expect(machine.receive(screen(.unknown), now: 2).state == .working)
+    #expect(machine.receive(screen(.idle), now: 3).state == .idle)
+  }
+
+  @Test func agentsWithoutTheConfirmationPublishIdleOnTheFirstFrame() {
+    var machine = AgentStateMachine()
+    _ = machine.receive(screen(.working), now: 0)
+    #expect(machine.receive(screen(.idle), now: 1).state == .idle)
+  }
+
   @Test func quietTurnNeverExpiresAndBlockedScreenWins() {
     var machine = AgentStateMachine()
     _ = machine.receive(screen(.idle), now: 0)

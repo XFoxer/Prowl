@@ -120,7 +120,16 @@ traecli's startup MCP boot progress line (`Starting MCP servers (n/m): … esc t
 interrupt`), which reuses that footer but is startup work, not a turn. With no
 such hint, the composer's own status row — `<model> · Context <n>% left · <cwd> ▧
 Workspace Edit` — is **Idle**, and an unrecognized status row under a live composer is
-also **Idle** rather than unknown, so a running turn's Working never lingers.
+also **Idle** rather than unknown, so a running turn's Working never lingers. That
+status row is identical in both states, which leaves the running footer as the only
+mark that separates them, and traecli repaints the live region on its own clock
+(0.209.1 draws as slowly as once a second while a turn streams). A lone **Idle** frame
+over a **Working** pane is therefore held for one poll instead of published: the frame
+can be a repaint gap, and reading it flipped the pane Working → Idle → Working (and
+earned a spurious Done badge on an unviewed pane). The next poll's Idle verdict
+confirms a settled turn; a Working or Blocked frame drops the hold, and an unreadable
+frame neither confirms nor cancels it. Idle → Working, Working → Blocked, and settling
+from unknown stay immediate, so a starting turn and a dialog are never delayed.
 
 A live dialog that replaces the composer is **Blocked**. Four shapes are matched by
 shape, not column (the dialog renders inside the live block's two-space gutter): a
@@ -420,11 +429,14 @@ a successful read reports recovery once after any failure, including a throttled
 Continuity-loss warnings report the post-reset cursor count and a bounded error kind/code. These logs contain no transcript or screen content.
 
 Detection tolerates several consecutive process-probe misses before declaring an
-agent gone. Screen-only state is deterministic: a recognized Working, Blocked, or
-Idle frame takes effect on the next active scan, without a time-based Working hold or
-generic screen-motion inference. Viewer overlays (Claude's transcript / history-search
-views) are an explicit exception: their chrome covers the live status area, so those
-frames keep the last trusted state instead of forcing Idle.
+agent gone. Screen-only state is deterministic: a recognized Working or Blocked frame
+takes effect on the next active scan, without a time-based Working hold or generic
+screen-motion inference. One exception covers agents whose Working evidence is
+screen-only (`DetectedAgent.requiresConfirmedIdleScreen`, currently `trae`): an Idle
+frame over a Working pane is applied only once the following poll reports Idle too, so
+a single mid-repaint frame cannot end a turn. Viewer overlays (Claude's transcript /
+history-search views) are another exception: their chrome covers the live status area,
+so those frames keep the last trusted state instead of forcing Idle.
 
 ## The state machine
 

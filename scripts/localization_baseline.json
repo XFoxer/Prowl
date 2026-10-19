@@ -72,6 +72,7 @@
     "Grok Build": "product-name",
     "HEARTBEAT STALL: main thread blocked ~%.3fs": "log",
     "HISTORY_UNAVAILABLE: Cannot capture history within the supported limits.": "protocol",
+    "Holding back %@ %@ until %@: %@": "log",
     "Host cannot verify an empty shell command line. Use an Agent Profile or control the shell on Host.": "protocol",
     "Host pane is unavailable: %@": "log",
     "IntelliJ IDEA": "product-name",

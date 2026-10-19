@@ -203,8 +203,13 @@ struct WorktreeDetailView: View {
         guard let worktreeID = actionTargetWorktree?.id else { return }
         store.send(.openWorkflowDetails(item, worktreeID: worktreeID))
       },
-      onWorkflowIntent: handleWorkflowIntent
+      onWorkflowIntent: handleWorkflowIntent,
+      onRetryGithubRateLimit: retryGithubRateLimitedRequests
     )
+  }
+
+  private func retryGithubRateLimitedRequests() {
+    store.send(.repositories(.githubIntegration(.retryRateLimitedRequests)))
   }
 
   private func loadWorkflowHistory(context: WorkflowHistoryContext, runs: [WorkflowRun]) {
@@ -238,7 +243,7 @@ struct WorktreeDetailView: View {
       agentsCapsule: agentsCapsuleState(for: input.actionTargetWorktree),
       agentsLauncherItems: agentsLauncherItems(for: input.actionTargetWorktree),
       statusToast: input.repositories.statusToast,
-      githubRateLimitedUntil: input.repositories.githubRateLimitedUntil,
+      githubRateLimit: input.repositories.githubRateLimitStatus(forWorktreeID: input.actionTargetWorktree?.id),
       workflowStatus: WorkflowStatusCenterPresentation(
         state: input.workflowRuns,
         selectedWorktreeID: input.actionTargetWorktree?.id,
@@ -302,11 +307,12 @@ struct WorktreeDetailView: View {
     ToolbarItem(placement: .principal) {
       ToolbarStatusView(
         toast: state.statusToast,
-        githubRateLimitedUntil: state.githubRateLimitedUntil,
+        githubRateLimit: state.githubRateLimit,
         workflow: state.workflowStatus,
         pullRequest: state.pullRequest,
         codeHost: state.codeHost,
-        onWorkflowIntent: handleWorkflowIntent
+        onWorkflowIntent: handleWorkflowIntent,
+        onRetryGithubRateLimit: retryGithubRateLimitedRequests
       )
       .padding(.horizontal)
     }
@@ -946,7 +952,7 @@ struct WorktreeDetailView: View {
     let agentsCapsule: AgentsCapsuleState?
     let agentsLauncherItems: [AgentsLauncherItem]
     let statusToast: RepositoriesFeature.StatusToast?
-    let githubRateLimitedUntil: Date?
+    let githubRateLimit: GithubRateLimitStatus?
     let workflowStatus: WorkflowStatusCenterPresentation
     let pullRequest: GithubPullRequest?
     let codeHost: CodeHost
@@ -1060,6 +1066,7 @@ struct WorktreeDetailView: View {
     let onRunWorkflowWithOptions: (String) -> Void
     let onShowWorkflowDetails: (WorkflowStartCatalogItem) -> Void
     let onWorkflowIntent: (WorkflowRunPanelIntent) -> Void
+    let onRetryGithubRateLimit: () -> Void
     @Environment(\.resolvedKeybindings) private var resolvedKeybindings
 
     var body: some ToolbarContent {
@@ -1087,11 +1094,12 @@ struct WorktreeDetailView: View {
       ToolbarItem(placement: .principal) {
         ToolbarStatusView(
           toast: toolbarState.shared.statusToast,
-          githubRateLimitedUntil: toolbarState.shared.githubRateLimitedUntil,
+          githubRateLimit: toolbarState.shared.githubRateLimit,
           workflow: toolbarState.shared.workflowStatus,
           pullRequest: toolbarState.shared.pullRequest,
           codeHost: toolbarState.shared.codeHost,
-          onWorkflowIntent: onWorkflowIntent
+          onWorkflowIntent: onWorkflowIntent,
+          onRetryGithubRateLimit: onRetryGithubRateLimit
         )
         .padding(.horizontal)
       }

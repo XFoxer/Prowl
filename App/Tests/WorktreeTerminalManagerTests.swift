@@ -288,6 +288,84 @@ struct WorktreeTerminalManagerTests {
     manager.state(for: worktree).cleanupAllAgentDetectionState()
   }
 
+  @Test func degradedCodexLaunchKeepsTheDaemonOptOut() async throws {
+    let manager = WorktreeTerminalManager(
+      runtime: GhosttyRuntime(),
+      codexShellEnvironmentResolver: { _, _ in
+        CodexShellLaunchEnvironment(
+          executableURL: URL(filePath: "/nonexistent/prowl-test/codex"), processEnvironment: ["HOME": "/tmp"])
+      },
+      codexVersionQuery: { _ in "codex-cli 0.162.1" },
+      hookResourcesProvider: {
+        AgentHookResources(bundledCLIPath: "/usr/bin/true", socketPath: "/tmp/prowl-test.sock")
+      },
+      skipsSurfaceCreationForTesting: true
+    )
+    let worktree = makeWorktree()
+    let original = AgentProfileLaunchPlan(
+      profileID: UUID(),
+      profileName: "Codex",
+      runtime: .codex,
+      invocation: AgentInvocation(executable: "codex", arguments: ["Prompt"]),
+      commandEnvironmentTokens: [],
+      placement: .tab,
+      splitDirection: .right,
+      surfaceEnvironment: [AgentProfileLaunchPlanner.promptCarrierName: "Prompt"],
+      dedicatedHome: nil
+    )
+    let request = AgentProfileLaunchRequest(plan: original, placement: .tab(background: false))
+
+    let preparation = try await manager.prepareAgentProfileLaunch(request, in: worktree).get()
+
+    #expect(preparation.warnings.map(\.code) == [.managedHookDegraded])
+    #expect(preparation.context.request.plan.invocation.arguments == ["--no-daemon", "Prompt"])
+    #expect(preparation.context.request.plan.hookRegistration == nil)
+    #expect(preparation.context.request.plan.terminalInput.contains("'codex' '--no-daemon' "))
+  }
+
+  /// Review R1-002: the second attempt that sees the launch target change fails open without
+  /// the managed hook, and must still keep the daemon opt-out.
+  @Test func launchTargetChangeDuringPreparationKeepsTheDaemonOptOut() async throws {
+    let focusChanger = FocusChanger()
+    let manager = WorktreeTerminalManager(
+      runtime: GhosttyRuntime(),
+      codexShellEnvironmentResolver: { _, _ in
+        CodexShellLaunchEnvironment(
+          executableURL: URL(filePath: "/nonexistent/prowl-test/codex"), processEnvironment: ["HOME": "/tmp"])
+      },
+      codexVersionQuery: { _ in
+        await focusChanger.change()
+        return "codex-cli 0.162.1"
+      },
+      hookResourcesProvider: {
+        AgentHookResources(bundledCLIPath: "/usr/bin/true", socketPath: "/tmp/prowl-test.sock")
+      },
+      skipsSurfaceCreationForTesting: true
+    )
+    let worktree = makeWorktree()
+    let state = manager.state(for: worktree)
+    focusChanger.action = { _ = state.createTab() }
+    let original = AgentProfileLaunchPlan(
+      profileID: UUID(),
+      profileName: "Codex",
+      runtime: .codex,
+      invocation: AgentInvocation(executable: "codex", arguments: ["Prompt"]),
+      commandEnvironmentTokens: [],
+      placement: .tab,
+      splitDirection: .right,
+      surfaceEnvironment: [AgentProfileLaunchPlanner.promptCarrierName: "Prompt"],
+      dedicatedHome: nil
+    )
+    let request = AgentProfileLaunchRequest(plan: original, placement: .tab(background: false))
+
+    let preparation = try await manager.prepareAgentProfileLaunch(request, in: worktree).get()
+
+    #expect(focusChanger.calls == 2)
+    #expect(preparation.warnings.map(\.message) == ["The launch target changed during managed hook preparation."])
+    #expect(preparation.context.request.plan.hookRegistration == nil)
+    #expect(preparation.context.request.plan.invocation.arguments == ["--no-daemon", "Prompt"])
+  }
+
   @Test func promptedManagedHookLaunchBindsDispatchToTheRegistrationEpoch() throws {
     let manager = WorktreeTerminalManager(
       runtime: GhosttyRuntime(),
@@ -1028,4 +1106,16 @@ struct WorktreeTerminalManagerTests {
     )
   }
 
+}
+
+/// Moves terminal focus from inside an asynchronous preparation probe.
+@MainActor
+private final class FocusChanger {
+  var action: () -> Void = {}
+  private(set) var calls = 0
+
+  func change() {
+    calls += 1
+    action()
+  }
 }

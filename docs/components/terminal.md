@@ -101,6 +101,12 @@ and a profile that sets launch-scoped environment variables runs as
 `env VAR=… claude`, whose first token is `env`. The slot stays claimable, so a
 later recognised command in the same tab still takes it over.
 
+A tab with a pane whose foreground `ssh` reaches a remote host also shows a network glyph
+before its title, and the tooltip names the host. The pane itself shows `user@host` in its
+bottom-trailing corner, and "Disconnected from user@host" for five seconds after that `ssh`
+exits. A yellow warning glyph in that label means Prowl cannot read the pane's agents; its
+tooltip says why. See [agent detection](agent-detection.md#remote-agents-over-ssh).
+
 ## Shell integration & status (OSC sequences)
 
 Ghostty's shell integration drives several Prowl features via terminal escape
@@ -115,8 +121,9 @@ sequences:
   agent activity (Working/Blocked, incl. background workflows) — see
   [agent-detection](agent-detection.md#worktree-running-indicator).
 - **Program status (OSC 7501)** — Prowl answers the support query, so programs
-  that speak the protocol (Claude Code 2.1.295+, Pi 1.1.0+, Oh My Pi 18.8.7+) report
-  idle/working/blocked/done/error. Prowl keeps one record tree per pane with the
+  that speak the protocol (Claude Code 2.1.295+, Pi 1.1.0+, Oh My Pi 18.8.7+,
+  Codex 0.163.0+) report their state. Codex sends idle/working/blocked; the other
+  verified producers also send done/error. Reports without a support query are accepted. Prowl keeps one record tree per pane with the
   protocol's lifetime rules (a report replaces its record, `clear` removes a
   subtree, `app` is inherited, at most 256 records) and feeds the root record to
   agent detection — see

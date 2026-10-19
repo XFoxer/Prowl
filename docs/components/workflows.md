@@ -94,6 +94,12 @@ rounds. The initiating agent follows the returned `self_initiated.line` to deliv
 its scope, plan, and verification brief. Local changes and existing PRs are both
 supported. `focus` adds an optional single-line review instruction.
 
+If caller identity is unavailable, an independently selected `--pane <UUID>` can
+serve as the source. There is no `self_initiated` task in that case: if you selected
+your own pane, end your turn so Prowl can deliver the first message. Follow the
+task's token-prefixed read and delivery commands. Later messages return to that
+same bound pane. See [the CLI fallback procedure](cli.md#workflow-fallback-when-caller-identity-is-unavailable).
+
 Each round includes a reviewer report and main's disposition. Review focuses on
 material correctness, plan gaps, architecture, and realistic UX regressions. Every
 report records which files or areas the reviewer inspected. From round 2 on, the
@@ -316,6 +322,14 @@ Agents retrieve assigned prompts and explicit input resources with
 `prowl workflow read`, using the run ID, invocation number, and assigned pane. Prowl owns
 persistence; deliver text or JSON through `prowl workflow deliver -` on stdin. Run
 paths are temporary artifact locations, not durable downstream references.
+
+A typed task line puts the step's `PROWL_WORKFLOW_TOKEN=<token>` in front of both the
+`read` and the `deliver` command. When Prowl can place the calling process in a pane, the
+pane identifies the task and the token only correlates it. When it cannot — for example, a
+command that Codex's shared daemon runs and Prowl cannot map to a pane (see
+[CLI](cli.md)) — the token of the waiting step identifies the task instead, so `read` and
+`deliver` still work. A launched agent gets the token in its environment. Skip, Cancel, and
+Relaunch revoke the token.
 
 ## Settings → Agents → Workflows
 

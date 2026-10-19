@@ -53,9 +53,9 @@ release script's freshness check requires, so run step (a) before step (b).
 
 `docs-ai/README.md` conflicts on nearly every sync because the fork and upstream share the
 `docs-ai/` numbering space. Resolve by keeping upstream's row and renumbering the fork's
-entry to the next free number (e.g. upstream took `081-canvas-layout-modes`, so the fork's
-Trae record moved to `082-trae-cli-support`), then update the link in that row. With
-`rerere` on, later syncs replay the resolution.
+entry to the next free number (e.g. upstream took `082-ssh-remote-agents` in the 2026-10-19
+sync, so the fork's Trae record moved from `082` to `083-trae-cli-support`), then update the
+link in that row. With `rerere` on, later syncs replay the resolution.
 
 Keep every fork `docs-ai/` addition on a number upstream has not used yet.
 

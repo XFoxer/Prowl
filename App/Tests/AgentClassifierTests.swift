@@ -172,7 +172,7 @@ struct AgentClassifierTests {
     let result = try #require(identifyAgentInJob(job))
     #expect(result.agent == .omp)
     #expect(result.name == "omp")
-    #expect(result.process.pid == 100)
+    #expect(result.process.ref == .local(100))
   }
 
   @Test func identifiesCursorAgentAliasCommandLines() throws {
@@ -307,7 +307,7 @@ struct AgentClassifierTests {
     let result = try #require(identifyAgentInJob(job))
     #expect(result.agent == .claude)
     #expect(result.name == "claude")
-    #expect(result.process.pid == 101)
+    #expect(result.process.ref == .local(101))
   }
 
   @Test func launchProcessIsTheTopmostJobAncestorOfTheIdentifiedProcess() throws {
@@ -335,7 +335,7 @@ struct AgentClassifierTests {
 
     let result = try #require(identifyAgentInJob(job))
     #expect(result.agent == .droid)
-    #expect(result.launchProcessID == 100)
+    #expect(result.launchProcess == .local(100))
   }
 
   @Test func launchProcessIsTheIdentifiedProcessWhenItsParentIsOutsideTheJob() throws {
@@ -345,7 +345,7 @@ struct AgentClassifierTests {
         ForegroundProcess(pid: 100, parentProcessID: 50, name: "claude", argv0: "claude", cmdline: "claude")
       ]
     )
-    #expect(try #require(identifyAgentInJob(shellChild)).launchProcessID == 100)
+    #expect(try #require(identifyAgentInJob(shellChild)).launchProcess == .local(100))
 
     let unknownParent = ForegroundJob(
       processGroupID: 100,
@@ -353,7 +353,7 @@ struct AgentClassifierTests {
         ForegroundProcess(pid: 100, name: "codex", argv0: "codex", cmdline: "codex")
       ]
     )
-    #expect(try #require(identifyAgentInJob(unknownParent)).launchProcessID == 100)
+    #expect(try #require(identifyAgentInJob(unknownParent)).launchProcess == .local(100))
   }
 
   @Test func launchProcessWalkStopsOnACorruptParentCycle() {
@@ -364,6 +364,6 @@ struct AgentClassifierTests {
         ForegroundProcess(pid: 100, parentProcessID: 101, name: "droid", argv0: "droid", cmdline: "droid"),
       ]
     )
-    #expect([100, 101].contains(job.launchProcessID(of: 101)))
+    #expect([ProcessRef.local(100), .local(101)].contains(job.launchProcess(of: .local(101))))
   }
 }

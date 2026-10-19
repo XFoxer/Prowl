@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026.10.17](https://github.com/onevcat/Prowl/releases/tag/v2026.10.17)
+
+### Improved
+
+- Codex 0.163.0 and later now reports its status to Prowl directly, so Codex sessions update their status immediately. Approval requests and questions appear as blocked while waiting for your response.
+
 ## [2026.10.15.2](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.15.2)
 
 ### New
@@ -10,12 +16,34 @@
 
 - TraeCode CLI panes no longer stay stuck on Working. Detection now reads the whole active screen instead of only the bottom rows, so a running turn whose indicator sits under a tall checklist is still recognized, and a pane returns to Idle as soon as its composer is live again.
 - TraeCode CLI dialogs are reported as Blocked instead of Working — permission, choice, and form prompts, plus bracketed yes/no prompts and the login/auth screens. A dialog that replaced the composer could previously be missed, leaving an agent that was waiting on you shown as running.
+
 ## [2026.10.15.1](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.15.1)
 
 ### Fixed
 
 - Fixed TraeCode CLI agents being reported as **Idle** while a turn was still running — for example a session left idle for a long time that then starts a new task, or a running turn whose output sits under a tall checklist. Detection now reads the whole live region above the composer instead of a fixed number of rows.
 - Fixed the toolbar notification bell not highlighting when an agent finished while Prowl was in the background or the pane was not focused. The completion now stays unread and lights the bell until you focus it.
+
+## [2026.10.15](https://github.com/onevcat/Prowl/releases/tag/v2026.10.15)
+
+### New
+
+- Canvas remembers your chosen layout and places new cards without overlap. Run `prowl canvas layout tile --show` to open Canvas and tile your tabs; it keeps tiling as tabs come and go.
+
+### Improved
+
+- Switching Shelf books uses less CPU, with selection highlights and bottom controls updating immediately.
+- Oh My Pi now reports working, approval, question, and error states directly to Prowl, including ongoing background jobs. Agent sessions are also detected correctly in temporary directories such as `/tmp` and through directory symlinks.
+
+### Fixed
+
+- Changing **Settings → Worktree → Auto-delete archived worktrees** now asks for confirmation if the new period would immediately delete archived worktrees. Cancel keeps both the previous setting and your worktrees.
+- Terminal layouts and your default Shelf or Canvas view now restore even when a repository fails to load, skipping unavailable worktrees.
+- GitHub rate limits now pause requests by host and API, so a primary limit no longer blocks unrelated requests. Click the toolbar’s rate-limit status or open **Settings → GitHub** to see the cause and select **Retry Now**.
+- Codex workflows can now read tasks and deliver results when caller-pane detection fails. Supported Codex profile launches also stay independent of the shared daemon to preserve their pane context.
+- On-device branch name suggestions now use the prefix your repository's branches already use, such as `feat/`, including remote-only branches, instead of falling back to `worktree/`.
+- Settings edits no longer overwrite newly detected repository icons, pinned **Open in** choices, or agent and workflow settings saved elsewhere. Imported repository icons also finish saving if you switch Settings panes.
+
 ## [2026.10.14.1](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.14.1)
 
 This release fixes TraeCode CLI status and completion notifications in the fork.
@@ -24,6 +52,7 @@ This release fixes TraeCode CLI status and completion notifications in the fork.
 
 - TraeCode CLI sessions now appear in Active Agents and report Working, Blocked, and Idle states correctly, so a running Trae task is no longer missed.
 - A finished TraeCode CLI turn now posts a completion notification to the inbox. Prowl enables the Trae TUI notification (OSC 9) when it launches `traecli`; when you start `traecli` yourself, set `tui.notifications = true`, `tui.notification_method = "osc9"`, and `tui.notification_condition = "always"` under `[tui]` in `~/.trae/traecli.toml`.
+
 ## [2026.10.14](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.14)
 
 This release adds TraeCode CLI support to the fork and carries in the latest upstream work.

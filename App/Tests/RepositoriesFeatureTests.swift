@@ -2832,6 +2832,37 @@ struct RepositoriesFeatureTests {
     }
   }
 
+  @Test func branchNameSuggestionReceivesBranchNamesWithoutRemotePrefixes() async {
+    let repoRoot = "/tmp/repo"
+    let mainWorktree = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
+    let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
+    let gatheredBranchNames = LockIsolated<[String]?>(nil)
+    let store = TestStore(initialState: makeState(repositories: [repository])) {
+      RepositoriesFeature()
+    } withDependencies: {
+      $0.gitClient.automaticWorktreeBaseRef = { _ in "origin/main" }
+      $0.gitClient.branchRefs = { _ in
+        ["feat/a", "main", "origin/feat/a", "origin/feat/b", "origin/main", "upstream/fix/c"]
+      }
+      $0.gitClient.remoteNames = { _ in ["origin", "upstream"] }
+      $0.branchNameSuggestionClient.gatherContext = { repositoryName, _, existingBranchNames in
+        gatheredBranchNames.setValue(existingBranchNames)
+        return BranchNameSuggestionContext(
+          repositoryName: repositoryName,
+          existingBranchNames: existingBranchNames,
+          terminalContexts: [],
+          llmAvailable: false
+        )
+      }
+    }
+
+    store.exhaustivity = .off
+    await store.send(.worktreeCreation(.createRandomWorktreeInRepository(repository.id)))
+    await store.receive(\.worktreeCreation.promptedWorktreeCreationDataLoaded)
+    await store.receive(\.worktreeCreationPrompt.presented.branchNameSuggestionReceived)
+    #expect(gatheredBranchNames.value == ["feat/a", "main", "feat/b", "fix/c"])
+  }
+
   @Test func promptedWorktreeCreationCancelDismissesPrompt() async {
     let repoRoot = "/tmp/repo"
     let mainWorktree = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
@@ -6512,7 +6543,7 @@ struct RepositoriesFeatureTests {
     store.exhaustivity = .off
 
     await store.send(.autoDeleteExpiredArchivedWorktrees)
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed) {
+    await store.receive(\.deleteExpiredArchivedWorktree) {
       $0.deletingWorktreeIDs = [expiredWorktree.id]
     }
     await store.receive(\.worktreeLifecycle.worktreeDeleted)
@@ -6547,7 +6578,7 @@ struct RepositoriesFeatureTests {
     store.exhaustivity = .off
 
     await store.send(.autoDeleteExpiredArchivedWorktrees)
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed) {
+    await store.receive(\.deleteExpiredArchivedWorktree) {
       $0.deletingWorktreeIDs = [expiredWorktree.id]
     }
   }
@@ -6637,9 +6668,9 @@ struct RepositoriesFeatureTests {
     store.exhaustivity = .off
 
     await store.send(.autoDeleteExpiredArchivedWorktrees)
-    // Both deleteWorktreeConfirmed should fire
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed)
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed)
+    // Both guarded automatic deletions should fire
+    await store.receive(\.deleteExpiredArchivedWorktree)
+    await store.receive(\.deleteExpiredArchivedWorktree)
     // Both worktreeDeleted should complete without crash
     await store.receive(\.worktreeLifecycle.worktreeDeleted)
     await store.receive(\.worktreeLifecycle.worktreeDeleted)

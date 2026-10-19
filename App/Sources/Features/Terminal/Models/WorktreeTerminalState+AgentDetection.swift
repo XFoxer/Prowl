@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GhosttyKit
 
@@ -21,6 +22,7 @@ extension WorktreeTerminalState {
     }
     agentDetectionFullTickRequests.insert(view.id)
     agentDetectionSettleUntilBySurface[view.id] = now.addingTimeInterval(AgentDetectionSchedule.settleWindow)
+    remotePaneTrackers[view.id]?.requestSoon()
     startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
     interruptAgentDetectionSleep(forSurfaceID: view.id)
   }
@@ -50,7 +52,10 @@ extension WorktreeTerminalState {
         self.agentDetectionSchedules[view.id] = self.nextScheduleAfterTick(
           surfaceID: view.id, hasAgent: hasAgent, now: now)
 
-        guard let interval = self.agentDetectionSchedules[view.id]?.nextInterval(now: now) else {
+        guard
+          let interval = self.remoteAdjustedInterval(
+            surfaceID: view.id, self.agentDetectionSchedules[view.id]?.nextInterval(now: now))
+        else {
           self.finishColdAgentDetection(forSurfaceID: view.id)
           return
         }
@@ -71,6 +76,17 @@ extension WorktreeTerminalState {
       && !isAgentDetectionSettling(surfaceID: surfaceID, now: now)
     return Self.nextSchedule(
       agentDetectionSchedules[surfaceID] ?? .cold, hasAgent: hasAgent, delegated: delegated, now: now)
+  }
+
+  /// A pane with a foreground `ssh` keeps ticking whatever the local schedule says: the
+  /// host is probed only from ticks, and a remote agent can start without a key press here.
+  /// A bound remote agent is ticked at least every second so two absent snapshots release it
+  /// within the L0 budget.
+  func remoteAdjustedInterval(surfaceID: UUID, _ interval: Duration?) -> Duration? {
+    guard let tracker = remotePaneTrackers[surfaceID] else { return interval }
+    let cap: Duration = .seconds(
+      tracker.boundAgent != nil ? RemotePaneTracker.activeCadence : RemotePaneTracker.idleCadence)
+    return min(interval ?? cap, cap)
   }
 
   /// Whether a wake still holds the surface on the active cadence; an expired window is
@@ -121,15 +137,15 @@ extension WorktreeTerminalState {
       return false
     }
 
-    let identified = job.flatMap { identifyAgentInJob($0) }
-    let probedAgent = identified?.agent
-
-    var presence = agentDetectionPresenceBySurface[surfaceID] ?? AgentDetectionPresence()
-    let agent = presence.update(detectedAgent: probedAgent, releaseOnMiss: finished != nil)
-    agentDetectionPresenceBySurface[surfaceID] = presence
-    if let finished {
-      applyCommandFinished(finished, identified: identified, surfaceID: surfaceID)
-    }
+    let localIdentified = job.flatMap { identifyAgentInJob($0) }
+    // A successor is confirmed when the probe returns, not when the poll began (as below).
+    let remote = observeRemoteAgent(
+      job: job, localIdentified: localIdentified, surfaceID: surfaceID, now: max(now, Date()))
+    let identified = localIdentified ?? remote?.identified
+    // The origin change is confirmed when the probe returns, not when the poll began:
+    // a report that landed while the probe ran still belongs to the departed origin.
+    let originFence = applyAgentOrigin(identified, surfaceID: surfaceID, now: max(now, Date()))
+    let agent = updateAgentPresence(identified: identified, remote: remote, finished: finished, surfaceID: surfaceID)
     logUnmappedProgramStatusAppIfNeeded(surfaceID: surfaceID, agent: agent)
 
     let probe = AgentDetectionDiagnostic.Probe(
@@ -148,6 +164,8 @@ extension WorktreeTerminalState {
     let capturedAt = ProcessInfo.processInfo.systemUptime
     let coordinator = agentDetectionCoordinators[surfaceID] ?? makeAgentDetectionCoordinator(surfaceID: surfaceID)
     agentDetectionCoordinators[surfaceID] = coordinator
+    coordinator.programStatusOriginFence = originFence
+    coordinator.remoteProgramStatusFence = remote?.programStatusFence
     let process = Self.processGeneration(identified)
     // The tick is delegated only while the schedule says so (a key press puts one full
     // tick back on the active schedule and keeps it there for the settle window) and the
@@ -208,8 +226,8 @@ extension WorktreeTerminalState {
       detectedAgent: agent,
       // Presence holds keep the last known pid so a probe gap does not flap
       // the session to nil and back (the resolver re-binds on the next hit).
-      agentProcessID: identified?.process.pid ?? previous.agentProcessID,
-      launchProcessID: resolvedLaunchProcessID(identified: identified, previous: previous),
+      agentProcess: identified?.process.ref ?? previous.agentProcess,
+      launchProcess: resolvedLaunchProcess(identified: identified, previous: previous),
       launchObservation: launchObservation,
       session: session,
       iconLookupToken: iconLookupToken,
@@ -220,6 +238,8 @@ extension WorktreeTerminalState {
     )
     next.sessionMissStreak = sessionMissStreak
     next.decision = decision
+    next.remote =
+      next.agentProcess?.origin == .local ? nil : remote?.context(now: now, stateKnown: stabilized != .unknown)
     // Limit logging to meaningful transitions - agent identity or
     // stabilized state changes. Raw oscillation and `seen` flips are
     // routine and would otherwise dominate the log stream.
@@ -256,11 +276,263 @@ extension WorktreeTerminalState {
   }
 
   private static func processGeneration(_ identified: IdentifiedAgentProcess?) -> AgentProcessGeneration? {
-    identified.flatMap { identified in
-      ProcessDetection.processStartDate(pid: identified.process.pid).map {
-        AgentProcessGeneration(pid: identified.process.pid, startedAt: $0)
+    switch identified?.process.ref {
+    case .local(let pid):
+      ProcessDetection.processStartDate(pid: pid).map { .local(pid: pid, startedAt: $0) }
+    case .remote(let remote):
+      .remote(remote)
+    case .unprobedRemote(let ssh):
+      .unprobedRemote(ssh)
+    case nil:
+      nil
+    }
+  }
+
+  /// Launch context (the Profile and its config root) belongs to the launch process and
+  /// survives an engine replacement. A Profile launch runs on this Mac, so an agent whose
+  /// launch is on another origin is a different launch and must not wear it.
+  private func retireLocalLaunchContextForRemoteLaunch(identified: IdentifiedAgentProcess?, surfaceID: UUID) {
+    guard let identified, identified.launchProcess.origin != .local else { return }
+    launchProfilesBySurface.removeValue(forKey: surfaceID)
+  }
+
+  /// The pane's presence after one probe. A remote agent is identified on every tick while
+  /// its tracker holds it; the tracker releases it by the snapshot rule (docs-ai 082, C3)
+  /// instead of the local miss count, and a gone `ssh` releases it at once. A finished
+  /// command (OSC 133 D) on a remote pane asks the host for a snapshot right away.
+  private func updateAgentPresence(
+    identified: IdentifiedAgentProcess?, remote: RemotePaneTracker.Observation?,
+    finished: PendingCommandFinished?, surfaceID: UUID
+  ) -> DetectedAgent? {
+    var presence = agentDetectionPresenceBySurface[surfaceID] ?? AgentDetectionPresence()
+    defer { agentDetectionPresenceBySurface[surfaceID] = presence }
+    if remote != nil, finished != nil { remotePaneTrackers[surfaceID]?.requestSoon() }
+    let previousIsRemote = surfaceAgentStates[surfaceID]?.agentProcess.map { $0.origin != .local } ?? false
+    let releasesAtOnce = identified == nil && previousIsRemote
+    let agent = presence.update(detectedAgent: identified?.agent, releaseOnMiss: finished != nil || releasesAtOnce)
+    if let finished { applyCommandFinished(finished, identified: identified, surfaceID: surfaceID) }
+    return agent
+  }
+
+  /// The remote side of one probe (docs-ai 082, L0): when no local agent is in the
+  /// foreground but an `ssh` is, the pane's tracker for that `ssh` generation reports what
+  /// the host shows. Anything else retires the tracker.
+  private func observeRemoteAgent(
+    job: ForegroundJob?, localIdentified: IdentifiedAgentProcess?, surfaceID: UUID, now: Date
+  ) -> RemotePaneTracker.Observation? {
+    guard remoteAgentDetectionEnabled else {
+      retireRemotePaneTracker(surfaceID: surfaceID)
+      setRemoteIndicator(nil, surfaceID: surfaceID)
+      return nil
+    }
+    let tracker: RemotePaneTracker
+    if let job {
+      guard localIdentified == nil, let ssh = Self.foregroundSSH(job) else {
+        // The `ssh` left the foreground: its next tracker starts a new interval.
+        if let ssh = remotePaneTrackers[surfaceID]?.ssh {
+          remoteFenceHistoryBySurface[surfaceID]?[ssh]?.leftForeground = true
+        }
+        retireRemotePaneTracker(surfaceID: surfaceID)
+        reconcileRemoteIndicator(foregroundSSH: nil, observation: nil, surfaceID: surfaceID, now: now)
+        return nil
+      }
+      tracker = remotePaneTracker(surfaceID: surfaceID, ssh: ssh)
+    } else {
+      // A probe gap (no job read) is not evidence of a foreground change: an existing
+      // tracker keeps observing, and a missing one waits for the next real sample.
+      guard let existing = remotePaneTrackers[surfaceID] else { return nil }
+      tracker = existing
+    }
+    let active =
+      surfaceAgentStates[surfaceID]?.detectedAgent != nil || isAgentDetectionSettling(surfaceID: surfaceID, now: now)
+    let observation = bindUnprobedProducer(
+      observation: tracker.observe(active: active, now: now), tracker: tracker, surfaceID: surfaceID)
+    storeFenceHistory(tracker.fenceHistory, surfaceID: surfaceID)
+    if job != nil {
+      reconcileRemoteIndicator(
+        foregroundSSH: tracker.ssh, observation: observation, surfaceID: surfaceID, now: now)
+    }
+    return observation
+  }
+
+  /// Sets the pane's label from a sample that read the foreground job (a probe gap changes
+  /// nothing). It depends on no tracker, so a pane restored by Undo is reconciled too.
+  /// - The foreground `ssh` with a resolved connection, or with a correlation issue: connected,
+  ///   with that issue, so a pane without a listed agent still says why (L0-8).
+  /// - Another (or pending) `ssh`, or a shell: the label of an earlier `ssh` goes. An
+  ///   exited one leaves the ended marker for its duration; a suspended one leaves nothing.
+  private func reconcileRemoteIndicator(
+    foregroundSSH: LocalProcessGeneration?, observation: RemotePaneTracker.Observation?, surfaceID: UUID,
+    now: Date
+  ) {
+    let current = surfaces[surfaceID]?.bridge.state.remoteIndicator
+    if let foregroundSSH, let observation {
+      let issue = RemotePaneIndicator.issue(observation.correlation)
+      if observation.connection != nil || issue != nil {
+        let host = observation.connection?.label ?? String(localized: "Remote host")
+        setRemoteIndicator(.connected(host: host, ssh: foregroundSSH, issue: issue), surfaceID: surfaceID)
+        return
       }
     }
+    switch current {
+    case .connected(let host, let ssh, _) where ssh != foregroundSSH:
+      let exited = ProcessDetection.processStartDate(pid: ssh.pid) != ssh.startedAt
+      setRemoteIndicator(exited ? .ended(host: host, endedAt: now) : nil, surfaceID: surfaceID)
+    case .ended where current?.showsEndedMarker(now: now) == false:
+      setRemoteIndicator(nil, surfaceID: surfaceID)
+    default:
+      break
+    }
+  }
+
+  func setRemoteIndicator(_ indicator: RemotePaneIndicator?, surfaceID: UUID) {
+    guard let view = surfaces[surfaceID], view.bridge.state.remoteIndicator != indicator else { return }
+    let now = Date()
+    let spoken = RemoteAgentPresentation.paneAccessibility(view.bridge.state.remoteIndicator, now: now)
+    view.bridge.state.remoteIndicator = indicator
+    if let tabId = tabId(containing: surfaceID) { updateRemoteHosts(for: tabId) }
+    // The pane's accessibility label and help carry the remote state; like a title change,
+    // a change there is announced, or a focused VoiceOver user never hears it.
+    if RemoteAgentPresentation.paneAccessibility(indicator, now: now) != spoken {
+      if let poster = accessibilityPosterForTesting {
+        poster(view, .titleChanged)
+      } else {
+        NSAccessibility.post(element: view, notification: .titleChanged)
+      }
+    }
+  }
+
+  /// The tab shows the hosts its panes reach; tree changes (moved or closed panes) refresh it
+  /// through `updateRunningState`.
+  func updateRemoteHosts(for tabId: TerminalTabID) {
+    guard let tree = trees[tabId] else { return }
+    var hosts: [String] = []
+    for surface in tree.leaves() {
+      if let host = surface.bridge.state.remoteIndicator?.connectedHost, !hosts.contains(host) {
+        hosts.append(host)
+      }
+    }
+    tabManager.updateRemoteHosts(tabId, hosts: hosts)
+  }
+
+  /// Keeps `history` for its `ssh` and drops the histories of `ssh` clients that exited.
+  private func storeFenceHistory(_ history: RemoteFenceHistory, surfaceID: UUID) {
+    var histories = remoteFenceHistoryBySurface[surfaceID] ?? [:]
+    histories[history.ssh] = history
+    if histories.count > 1 {
+      histories = histories.filter { ssh, _ in
+        ssh == history.ssh || ProcessDetection.processStartDate(pid: ssh.pid) == ssh.startedAt
+      }
+    }
+    remoteFenceHistoryBySurface[surfaceID] = histories
+  }
+
+  /// The degraded OSC-only binding (docs-ai 082, L0 item 9): with no probed agent, a
+  /// verified producer's root record identifies the agent, and a later verified producer
+  /// replaces it. Records before the tracker's `unprobedRecordFence` never acquire or
+  /// confirm it.
+  private func bindUnprobedProducer(
+    observation: RemotePaneTracker.Observation, tracker: RemotePaneTracker, surfaceID: UUID
+  ) -> RemotePaneTracker.Observation {
+    var observation = observation
+    let current = observation.identified
+    let currentIsUnprobed = current.map { if case .unprobedRemote = $0.process.ref { true } else { false } } ?? false
+    guard currentIsUnprobed || (current == nil && tracker.allowsUnprobedBinding) else { return observation }
+    let fence = tracker.unprobedRecordFence
+    if let producer = verifiedRootProducer(surfaceID: surfaceID, notBefore: fence), producer != current?.agent {
+      observation.identified = tracker.bindUnprobed(producer)
+    }
+    guard let bound = observation.identified else { return observation }
+    observation.programStatusFence = fence
+    // OSC has no heartbeat: the bound producer's own last eligible report is the only
+    // confirmation.
+    observation.confirmedAt =
+      verifiedRootProducer(surfaceID: surfaceID, notBefore: fence) == bound.agent
+      ? programStatusStoresBySurface[surfaceID]?.root?.arrivedAt : nil
+    return observation
+  }
+
+  /// The verified OSC 7501 producer whose root record arrived on this surface no earlier
+  /// than `notBefore`, if any. "Verified" means its protocol behaviour was checked, not that
+  /// the payload is authentic.
+  private func verifiedRootProducer(surfaceID: UUID, notBefore: Date) -> DetectedAgent? {
+    guard let store = programStatusStoresBySurface[surfaceID], let root = store.root, root.arrivedAt >= notBefore,
+      let app = store.app(of: root),
+      let agent = DetectedAgent.allCases.first(where: { $0.programStatusApp == app })
+    else { return nil }
+    let support = programStatusSupportForTesting ?? ProgramStatusSupport.level(for:)
+    return support(agent) == .verified ? agent : nil
+  }
+
+  /// The pane's tracker for `ssh`, created (with the retained fence history) when the pane
+  /// has none for that generation.
+  private func remotePaneTracker(
+    surfaceID: UUID, ssh: (generation: LocalProcessGeneration, arguments: [String])
+  ) -> RemotePaneTracker {
+    if let existing = remotePaneTrackers[surfaceID] {
+      if existing.ssh == ssh.generation { return existing }
+      // Another `ssh` is in front: the previous one left the foreground.
+      remoteFenceHistoryBySurface[surfaceID]?[existing.ssh]?.leftForeground = true
+    }
+    retireRemotePaneTracker(surfaceID: surfaceID)
+    let tracker = RemotePaneTracker(
+      surfaceID: surfaceID, ssh: ssh.generation,
+      invocation: SSHInvocation.parse(
+        ssh.arguments, workingDirectory: ProcessDetection.currentDirectory(pid: ssh.generation.pid)),
+      fenceHistory: remoteFenceHistoryBySurface[surfaceID]?[ssh.generation],
+      source: remoteSnapshotSourceForTesting ?? .live
+    ) { [weak self] in
+      self?.wakeAgentDetectionForRemoteSnapshot(surfaceID: surfaceID)
+    }
+    remotePaneTrackers[surfaceID] = tracker
+    tracker.start()
+    return tracker
+  }
+
+  /// The terminal's own foreground `ssh` and its arguments (without `argv[0]`), with the
+  /// generation that its tracker belongs to. An `ssh` that another `ssh` of the job started
+  /// (the `-W` transport of `-J`, or one under a `ProxyCommand` shell) is never it.
+  nonisolated static func foregroundSSH(
+    _ job: ForegroundJob
+  ) -> (generation: LocalProcessGeneration, arguments: [String])? {
+    func isSSH(_ process: ForegroundProcess) -> Bool { process.argv0 == "ssh" || process.name == "ssh" }
+    func hasSSHAncestor(_ process: ForegroundProcess) -> Bool {
+      var parent = process.parentPID
+      for _ in job.processes.indices {
+        guard let pid = parent, let ancestor = job.processes.first(where: { $0.ref.namespacePID == pid }) else {
+          return false
+        }
+        if isSSH(ancestor) { return true }
+        parent = ancestor.parentPID
+      }
+      return false
+    }
+    for process in job.processes where isSSH(process) && !hasSSHAncestor(process) {
+      guard let pid = process.ref.localPID, let arguments = process.arguments,
+        let startedAt = ProcessDetection.processStartDate(pid: pid)
+      else { continue }
+      return (LocalProcessGeneration(pid: pid, startedAt: startedAt), Array(arguments.dropFirst()))
+    }
+    return nil
+  }
+
+  func retireRemotePaneTracker(surfaceID: UUID) {
+    remotePaneTrackers.removeValue(forKey: surfaceID)?.retire()
+  }
+
+  /// A snapshot arrived: run the next tick now, without the settle window a key press
+  /// opens, so a steady probe cadence does not keep the pane on the active schedule.
+  private func wakeAgentDetectionForRemoteSnapshot(surfaceID: UUID) {
+    guard let view = surfaces[surfaceID], let tabId = tabId(containing: surfaceID) else { return }
+    startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
+    interruptAgentDetectionSleep(forSurfaceID: surfaceID)
+  }
+
+  /// Origin bookkeeping for one probe: retires launch context a remote launch cannot
+  /// wear and returns the surface's OSC origin fence.
+  private func applyAgentOrigin(_ identified: IdentifiedAgentProcess?, surfaceID: UUID, now: Date) -> Date? {
+    retireLocalLaunchContextForRemoteLaunch(identified: identified, surfaceID: surfaceID)
+    return noteAgentOrigin(identified, surfaceID: surfaceID, now: now)
   }
 
   /// Resolves the screen detection for `text`, reusing `cache` when it already
@@ -301,16 +573,23 @@ extension WorktreeTerminalState {
     return detection
   }
 
-  private func resolvedLaunchProcessID(
+  private func resolvedLaunchProcess(
     identified: IdentifiedAgentProcess?,
     previous: PaneAgentState
-  ) -> pid_t? {
-    PaneAgentState.retainedLaunchProcessID(
-      identifiedLaunchProcessID: identified?.launchProcessID,
-      identifiedProcessID: identified?.process.pid,
+  ) -> ProcessRef? {
+    PaneAgentState.retainedLaunchProcess(
+      identifiedLaunch: identified?.launchProcess,
+      identifiedProcess: identified?.process.ref,
       previous: previous,
       isLiveAncestor: Self.processIsLiveAncestor
     )
+  }
+
+  /// The local process tree is the only ancestry a pane can walk; a remote pair is
+  /// never reported as a live ancestor.
+  nonisolated static func processIsLiveAncestor(_ ancestor: ProcessRef, of descendant: ProcessRef) -> Bool {
+    guard let ancestor = ancestor.localPID, let descendant = descendant.localPID else { return false }
+    return processIsLiveAncestor(ancestor, of: descendant)
   }
 
   /// Walk the live process tree upward from `descendant` (bounded), reporting whether it still
@@ -342,7 +621,7 @@ extension WorktreeTerminalState {
     return PaneAgentState.retainedLaunchObservation(
       observed: observed,
       previous: previous,
-      identifiedPID: identified?.process.pid
+      identified: identified?.process.ref
     )
   }
 
@@ -354,9 +633,10 @@ extension WorktreeTerminalState {
     context: (surfaceID: UUID, configRoot: URL?)
   ) async -> (session: AgentSession?, missStreak: Int) {
     var resolution = AgentSessionResolution(session: nil, isFresh: false)
-    if let identified {
+    // Session stores are local files; a remote process has none that this Mac can read.
+    if let local = identified?.local {
       resolution = await AgentSessionResolver.shared.resolve(
-        identified: identified,
+        identified: local,
         workingDirectory: workingDirectory,
         activeText: activeText,
         configRoot: context.configRoot,
@@ -366,7 +646,7 @@ extension WorktreeTerminalState {
     return PaneAgentState.retainedSession(
       resolution: resolution,
       previous: previous,
-      identifiedPID: identified?.process.pid
+      identified: identified?.process.ref
     )
   }
 
@@ -523,7 +803,9 @@ extension WorktreeTerminalState {
   }
 
   func activeAgentEntry(surfaceID: UUID, tabId: TerminalTabID, state: PaneAgentState) -> ActiveAgentEntry? {
-    guard let agent = state.detectedAgent, state.state != .unknown else { return nil }
+    // A local unknown hides the entry. A remote agent stays listed with an unknown state
+    // until the snapshot rule or the `ssh` exit releases it (docs-ai 082, C3).
+    guard let agent = state.detectedAgent, state.state != .unknown || state.remote != nil else { return nil }
     let paneIDs = trees[tabId]?.leaves().map(\.id) ?? []
     let paneIndex = paneIDs.firstIndex(of: surfaceID).map { $0 + 1 } ?? 1
     let tabTitle = tabManager.tabs.first(where: { $0.id == tabId })?.displayTitle ?? "?"
@@ -544,7 +826,8 @@ extension WorktreeTerminalState {
       rawState: state.fallbackState,
       displayState: state.displayState,
       lastChangedAt: state.lastChangedAt,
-      launchProfileName: launchProfileName(surfaceID: surfaceID, detected: agent)
+      launchProfileName: launchProfileName(surfaceID: surfaceID, detected: agent),
+      remote: state.remote
     )
   }
 
@@ -572,6 +855,7 @@ extension WorktreeTerminalState {
 
   func cleanupAgentDetectionState(forSurfaceId surfaceId: UUID) {
     agentDetectionLifecycleBySurface[surfaceId, default: 0] &+= 1
+    retireRemotePaneTracker(surfaceID: surfaceId)
     agentDetectionCoordinators.removeValue(forKey: surfaceId)?.invalidate()
     agentDetectionTasks[surfaceId]?.cancel()
     agentDetectionTasks.removeValue(forKey: surfaceId)
@@ -596,6 +880,8 @@ extension WorktreeTerminalState {
 
   func cleanupAllAgentDetectionState() {
     for coordinator in agentDetectionCoordinators.values { coordinator.invalidate() }
+    for tracker in remotePaneTrackers.values { tracker.retire() }
+    remotePaneTrackers.removeAll()
     agentDetectionCoordinators.removeAll()
     for task in agentDetectionTasks.values {
       task.cancel()
@@ -613,6 +899,8 @@ extension WorktreeTerminalState {
     pendingCommandFinishedBySurface.removeAll()
     programStatusStoresBySurface.removeAll()
     programStatusUnmappedAppsLoggedBySurface.removeAll()
+    programStatusOriginBySurface.removeAll()
+    remoteFenceHistoryBySurface.removeAll()
     agentDetectionSchedules.removeAll()
     surfaceAgentStates.removeAll()
     agentDetectionPresenceBySurface.removeAll()

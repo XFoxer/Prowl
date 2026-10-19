@@ -689,7 +689,9 @@ nonisolated public struct WorkflowInput: Codable, Sendable {
   /// `deliver`: the delivered output body (already read by the CLI).
   public let body: String?
   public let verdict: String?
-  /// `deliver`: `--token` or `$PROWL_WORKFLOW_TOKEN`; correlation only, never authentication.
+  /// `deliver` / `read`: `--token` or `$PROWL_WORKFLOW_TOKEN`. A resolved caller pane identifies
+  /// the task and the token only correlates it; without a caller pane, the token of the waiting
+  /// activation identifies the task (issue #911).
   public let token: String?
   /// `deliver`: deliver to the explicit target even when the caller pane belongs to another step.
   public let force: Bool

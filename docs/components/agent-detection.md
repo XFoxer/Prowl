@@ -285,7 +285,8 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
 3. **State decision.** Every agent uses one state machine. Codex also supplies
    incremental JSONL lifecycle evidence from process-owned session logs, without
    installing hooks. Claude supplies process-scoped native state without hooks.
-   Other agents keep their screen-only behavior. For Codex, an observed open
+   These providers and the screen rules apply when no verified OSC root is present.
+   For Codex without OSC authority, an observed open
    parent turn or child task stays **Working** through quiet periods; current
    approval/question UI takes precedence as **Blocked**. Completion closes only
    its matching work. Initial historical records do not start new work.
@@ -308,6 +309,16 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
    If a previously established daemon binding becomes unavailable, detection falls
    back to the screen but retains its log cursors. When the binding returns, it
    consumes pending events without replaying earlier turn starts.
+
+   Codex 0.163.0 and later sends [program status](#program-status-osc-7501)
+   with `app=codex`. Its root outranks the log provider and screen rules; the log
+   provider is not sampled while it decides. Session identity and semantic results
+   still use the session resolver and transcript reader. Codex sends `idle` after
+   completion or cancellation, so OSC alone does not earn a Done badge or prove a
+   dispatch completed. Approval and question prompts report `blocked` without a
+   kind (`osc.blocked.unspecified`). Codex clears its record when it hands the
+   terminal to an external program or exits, and re-emits after returning. It has
+   no OSC-specific opt-out; older versions remain on the existing fallback path.
 
    Claude reads the detected PID's native registry under its configured root
    (`~/.claude/sessions` by default). `busy` and `shell` mean **Working**, including
@@ -378,7 +389,7 @@ removes a record and its descendants (an empty id removes everything), a record 
 (`title`, `msg`) is never logged or published.
 
 A root record is **attributed** to the pane's detected agent only when its `app` is the
-agent's own name (`claude-code` for Claude Code, `pi` for Pi, `omp` for Oh My Pi) and it arrived after that
+agent's own name (`claude-code` for Claude Code, `pi` for Pi, `omp` for Oh My Pi, `codex` for Codex) and it arrived after that
 agent's process started. That rejects another program's records and a predecessor's
 leftovers (an agent that exited without `clear`); it does not authenticate the writer: a
 wrapper or nested program that writes the expected `app` is attributed like the agent
@@ -387,8 +398,8 @@ in the app, not a setting:
 
 | Support | Meaning |
 | --- | --- |
-| unverified | Records are stored and resolved, but only compared with the live decision; disagreements are logged (`AgentDetection` category). Every agent except Claude Code, Pi, and Oh My Pi today. |
-| verified | The root record is the first-priority state evidence, applied the moment the report arrives. Claude Code (2.1.295 and later, `app=claude-code`), Pi (1.1.0 and later, `app=pi`), and Oh My Pi (18.8.7 and later, `app=omp`). |
+| unverified | Records are stored and resolved, but only compared with the live decision; disagreements are logged (`AgentDetection` category). Every agent except Claude Code, Pi, Oh My Pi, and Codex today. |
+| verified | The root record is the first-priority state evidence, applied the moment the report arrives. Claude Code (2.1.295 and later, `app=claude-code`), Pi (1.1.0 and later, `app=pi`), Oh My Pi (18.8.7 and later, `app=omp`), and Codex (0.163.0 and later, `app=codex`). |
 
 For a verified producer the pane follows the **root** record only: `working` → Working
 (`osc.working`), `blocked` → Blocked (`osc.blocked.<kind>`, `unspecified` without a
@@ -410,7 +421,8 @@ there and releases the entry when it is gone. There is no silence timeout.
 
 Producers that never report (older versions, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`,
 `PI_PROGRAM_STATUS=0`, Oh My Pi's `terminal.programStatus: false`) get today's screen and provider detection unchanged. The
-producer's own variables are the escape hatch; Prowl has no setting for this.
+available producer controls are the escape hatch; Codex 0.163.0 has none for OSC.
+Prowl has no setting for this.
 
 Independently of the support table, Ghostty's shell integration tells Prowl when the
 foreground command finished (OSC 133). Detection then probes the process at once,
@@ -446,6 +458,51 @@ frame over a Working pane is applied only once the following poll reports Idle t
 a single mid-repaint frame cannot end a turn. Viewer overlays (Claude's transcript /
 history-search views) are another exception: their chrome covers the live status area,
 so those frames keep the last trusted state instead of forcing Idle.
+
+## Remote agents over SSH
+
+When a pane's foreground command is a local `ssh`, Prowl shows the agent that runs on the
+host (docs-ai 082, L0). Prowl installs nothing on the host and edits no rc file. To turn
+the feature off, run `defaults write com.onevcat.prowl remoteAgentDetectionEnabled -bool
+false` and relaunch Prowl, or launch it with `PROWL_REMOTE_AGENT_DETECTION=0`.
+
+- **How.** Prowl opens its own SSH connection to the same target (`ssh -G` resolves user,
+  host name, port, `ProxyJump` and `-F`). It runs a read-only probe over that connection:
+  about once a second while a remote agent is listed, and every few seconds otherwise.
+  The probe finds the pane's session by `LC_PROWL_PANE`, which the default OpenSSH
+  `SendEnv`/`AcceptEnv` settings forward, and reads the session's foreground process. A
+  verified producer's OSC 7501 reports decide the state, as they do locally; otherwise the
+  screen decides.
+- **Pane and tab.** A pane whose foreground `ssh` reaches a host shows `user@host` in its
+  bottom-trailing corner, and its tab shows a network glyph before the title (the tooltip
+  names the hosts). When that `ssh` exits and the pane is back in its local shell, the
+  corner reads "Disconnected from user@host" for five seconds. A suspended `ssh` (still
+  running) only removes the label. When Prowl cannot read the pane's agents (the host has
+  no session for the pane, the side channel fails, or the `ssh` command is not supported),
+  the label shows a yellow warning glyph instead, whether or not an agent is listed. Its
+  tooltip gives the reason, and says that only agents that report their own status
+  (OSC 7501) are detected.
+- **Host label and health.** The Active Agents row shows `user@host` with a network
+  glyph. Connection health is shown apart from the agent's state. If no snapshot has
+  confirmed the agent for 10 s, the row keeps the last state, greys it out, and adds
+  "Last seen … ago". "Status unavailable" means the host was never read. A **Blocked**
+  state stays red: OSC has no heartbeat, so a blocked agent goes quiet while it waits
+  for you. A state of
+  "Unknown" means the host confirms the agent but no evidence decides its state. The tooltip names
+  the reason (for example, an unknown host key, or a server that does not accept
+  `LC_PROWL_PANE`).
+- **Degraded binding.** Sometimes the host cannot be read, or has no session for the pane:
+  `-F` without `SendEnv`, a refused key, or an `ssh` command outside the supported grammar.
+  In that case a verified producer's OSC 7501 report still lists the agent, with
+  `heuristic` confidence. Only the `ssh` exit releases such an agent. When its producer is
+  quiet for 10 s, it becomes stale.
+- **Release.** A probed agent is released after two complete fresh snapshots without it
+  (about 2–3 s after it exits), or at once when the `ssh` exits.
+- **Limits.** A remote agent cannot be a `prowl agents dispatch` target that needs a
+  receipt, or a workflow `current`/`pick` participant: both fail with
+  `REMOTE_AGENT_UNSUPPORTED`. A stale or state-unknown observation never satisfies an
+  `idle` or `blocked` wait, or input readiness, until the host confirms the agent again. Local session files,
+  transcripts and hooks are never read for a remote agent.
 
 ## The state machine
 

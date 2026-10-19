@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026.10.19](https://github.com/XFoxer/Prowl/releases/tag/v2026.10.19)
+
+### New
+
+- **Remote agents over SSH.** When a pane's foreground command is `ssh`, Prowl now reads the agent running on that host. The pane corner and its tab show `user@host`, the Active Agents row and `prowl agents` report the host and its connection health beside the agent's state, and the status, blocker text, and completion notifications come from the remote session. Prowl installs nothing on the host and edits no remote shell configuration, and when it cannot read the host it says why instead of guessing. A remote agent cannot be a `prowl agents dispatch` target that needs a receipt, or a workflow `current`/`pick` participant — those report `REMOTE_AGENT_UNSUPPORTED` rather than failing quietly. Remote detection is on by default; set `PROWL_REMOTE_AGENT_DETECTION=0` to turn it off.
+- **Canvas keeps your layout.** Canvas remembers the layout you chose (Arrange / Organize / Tile / freeform) and places new cards without overlap. Run `prowl canvas layout tile --show` to open Canvas and tile your tabs; it keeps tiling as tabs come and go.
+
+### Improved
+
+- Codex 0.163.0 and later reports its status to Prowl directly, so Codex sessions update their state immediately and approval requests and questions appear as blocked while they wait for you.
+- Oh My Pi reports working, approval, question, and error states directly to Prowl, including ongoing background jobs. Agent sessions are also detected correctly in temporary directories such as `/tmp` and through directory symlinks.
+- GitHub rate limits pause requests by host and API, so a primary limit no longer blocks unrelated requests. Click the toolbar's rate-limit status or open **Settings → GitHub** to see the cause and select **Retry Now**.
+- Agent Profile fields line up correctly on macOS 27.
+- Switching Shelf books uses less CPU, with selection highlights and bottom controls updating immediately.
+
+### Fixed
+
+- TraeCode CLI panes no longer flash **Idle** in the middle of a long turn. traecli repaints its live region on its own clock, so one sampled frame could miss the running footer and flip the pane to Idle and straight back — and, on a pane you were not looking at, leave a "done" badge behind. An Idle reading now has to be confirmed by the next poll before it ends a working turn. A turn that has already finished while traecli holds a background shell still reads Idle, by design: the agent has handed control back and only the shell is running.
+- Changing **Settings → Worktree → Auto-delete archived worktrees** now asks for confirmation if the new period would immediately delete archived worktrees. Cancel keeps both the previous setting and your worktrees.
+- Terminal layouts and your default Shelf or Canvas view now restore even when a repository fails to load, skipping unavailable worktrees.
+- Codex workflows can now read tasks and deliver results when caller-pane detection fails. Supported Codex profile launches also stay independent of the shared daemon so their pane context is preserved.
+- On-device branch name suggestions now use the prefix your repository's branches already use, such as `feat/`, including remote-only branches, instead of falling back to `worktree/`.
+- Settings edits no longer overwrite newly detected repository icons, pinned **Open in** choices, or agent and workflow settings saved elsewhere. Imported repository icons also finish saving if you switch Settings panes.
 ## [2026.10.17](https://github.com/onevcat/Prowl/releases/tag/v2026.10.17)
 
 ### Improved

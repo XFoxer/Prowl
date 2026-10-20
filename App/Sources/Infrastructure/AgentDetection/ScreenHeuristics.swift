@@ -1042,49 +1042,107 @@ nonisolated private func traeComposer(_ screen: TraeScreen) -> TraeComposer? {
 }
 
 /// A live modal dialog (approval, choice, or elicitation form) replaces the
-/// composer. traecli renders it inside the live block's two-space gutter — the
-/// question header, the option rows, and the footer all carry the same indent —
-/// so the mark is matched by shape, never by column: with the composer already
-/// ruled out, an indented `❯`-marked option is live chrome. Four shapes qualify:
-/// a `❯`-marked option row with an unselected numbered sibling, a form whose only
-/// chrome is its submit/navigate footer (a free-form field has no options), a
-/// bracketed y/n confirmation, or one of the interactive login/auth screens.
-/// Output that merely quotes a question carries none of these and cannot read as
-/// blocked. The returned marker is the block's bottom-most chrome row, which is
-/// what resolves a dialog against a composer box above it.
+/// composer. traecli renders most of them inside the live block's two-space gutter,
+/// but the first-run trust prompt and the login screens render at column 0, so the
+/// mark is matched by shape, never by column. Four shapes qualify: a `❯`-marked
+/// option row with an unselected numbered sibling, a form whose only chrome is its
+/// submit/navigate footer (a free-form field has no options), a bracketed y/n
+/// confirmation, or one of the interactive login/auth screens. Output that merely
+/// quotes a question carries none of these and cannot read as blocked.
+///
+/// Returned with its marker — the block's bottom-most chrome row, which resolves a
+/// dialog against a composer box above it — and the region the dialog occupies, so
+/// state detection and `agents read`'s blocker extraction cannot disagree about
+/// where it starts.
 nonisolated private func traeLiveDialog(_ screen: TraeScreen) -> TraeDialog? {
   let window = Array(screen.rows.indices.suffix(10))
   let lines = screen.lines
-  if let marker = window.last(where: { isTraeSelectionRow(lines[$0]) }),
-    window.contains(where: { isTraeUnselectedOptionRow(lines[$0]) })
-  {
-    return TraeDialog(marker: marker)
-  }
-  if let marker = window.last(where: { isTraeDialogFooterRow(lines[$0]) }) {
-    return TraeDialog(marker: marker)
-  }
-  if let marker = window.last(where: { isTraeYesNoPromptRow(lines[$0]) }) {
-    return TraeDialog(marker: marker)
-  }
-  guard hasTraeAuthPrompt(lines, window),
-    let marker = window.last(where: { isTraeDialogMarker(lines[$0]) })
+  // The composer's status bar is dynamic chrome (model, context, path, permission
+  // mode), never a dialog row: a checkout at `/tmp/esc to cancel` must not present
+  // as a footer.
+  let candidates = window.filter { !isTraeStatusBarRow(lines[$0]) }
+  guard hasTraeDialogShape(lines, candidates),
+    let marker = candidates.last(where: { isTraeDialogMarker(lines[$0]) })
   else { return nil }
-  return TraeDialog(marker: marker)
+  return TraeDialog(marker: marker, region: traeDialogRegion(screen, marker: marker))
 }
 
-/// A live dialog reduced to the one fact `detectTrae` needs about it.
+/// The four live-dialog shapes, over the rows that may carry them.
+nonisolated private func hasTraeDialogShape(_ lines: [String], _ candidates: [Int]) -> Bool {
+  if candidates.contains(where: { isTraeSelectionRow(lines[$0]) }),
+    candidates.contains(where: { isTraeUnselectedOptionRow(lines[$0]) })
+  {
+    return true
+  }
+  if candidates.contains(where: { isTraeDialogFooterRow(lines[$0]) }) { return true }
+  if candidates.contains(where: { isTraeYesNoPromptRow(lines[$0]) }) { return true }
+  return hasTraeAuthPrompt(lines, candidates)
+}
+
+/// A live dialog: where its bottom-most chrome sits, and the rows it occupies.
 private struct TraeDialog {
   /// The row of the dialog's bottom-most chrome: the option row, footer, prompt, or
   /// auth line that left the composer behind.
   let marker: Int
+  /// The dialog's own rows, from its head down to the marker.
+  let region: ClosedRange<Int>
 }
 
-/// traecli's live dialog footer: `<key> to submit[_ all| answer] | esc to cancel`
-/// on approval and elicitation forms, `<keys> to navigate fields|questions` on
-/// multi-field ones. The phrases are unique to modal chrome, so a transcript
-/// line that merely mentions submitting cannot forge one by accident.
+/// The dialog's rows, walked back from its marker.
+///
+/// Indentation alone cannot delimit a dialog: an approval form renders inside the
+/// live block's two-space gutter, but the trust prompt and the login screens put
+/// their question and choices at column 0. The region therefore stops at the rows
+/// that belong to *other* chrome — the composer box and its status bar, the live
+/// block's own glyph-headed rows — and is capped, so a screen whose transcript runs
+/// straight into the dialog without any of that chrome cannot hand `agents read` an
+/// unbounded slice of history.
+nonisolated private func traeDialogRegion(_ screen: TraeScreen, marker: Int) -> ClosedRange<Int> {
+  var start = marker
+  var steps = 0
+  while start > screen.rows.startIndex, steps < traeDialogRegionLimit {
+    let index = start - 1
+    guard isTraeDialogContent(screen, index) else { break }
+    start = index
+    steps += 1
+  }
+  return start...marker
+}
+
+/// The rows a dialog can carry. Everything that belongs to the composer (its prompt
+/// row, its full-width rules, the status bar under it) or to the transcript (a
+/// glyph-headed tool call, a live-block footer, the welcome box) ends the region.
+nonisolated private func isTraeDialogContent(_ screen: TraeScreen, _ index: Int) -> Bool {
+  let raw = screen.rows[index].raw
+  let line = screen.lines[index]
+  if isTraeStatusBarRow(line) { return false }
+  if line.allSatisfy({ $0 == "─" }) { return false }
+  if isTraePromptRow(line), !isTraeSelectionRow(line) { return false }
+  return !isTraeLiveFooterLead(raw)
+}
+
+/// How far above its marker a dialog's rows are read. The widest known form — an
+/// approval with a question, its parameters, and four options — is ten rows.
+nonisolated private let traeDialogRegionLimit = 16
+
+/// Whether the row is the composer's status bar: live chrome below the box carrying
+/// dynamic values — the model, the context percentage, the working directory, the
+/// permission mode. It reads the same whether a turn runs or not, so nothing on it
+/// can speak for the dialog or the running turn.
+nonisolated private func isTraeStatusBarRow(_ line: String) -> Bool {
+  let lower = line.lowercased()
+  if lower.contains("▧ workspace edit") { return true }
+  return lower.contains("context ") && lower.contains("% left")
+}
+
+/// traecli's live dialog footer: `<key> to submit[_ all| answer] | esc to cancel` on
+/// approval forms, `↑/↓ to navigate fields   esc to cancel` on elicitation forms.
+/// The row has to carry the cancel/navigate chrome as well as the phrase: matching
+/// the phrase alone let ordinary content forge modal chrome — a working directory
+/// like `/tmp/how to submit` turned a settled composer into Blocked.
 nonisolated private func isTraeDialogFooterRow(_ line: String) -> Bool {
   let lower = line.lowercased()
+  guard lower.contains("esc to ") else { return false }
   return lower.contains(" to submit")
     || lower.contains("to navigate fields")
     || lower.contains("to navigate questions")
@@ -1104,7 +1162,9 @@ nonisolated private let traeYesNoTokens = ["[y/n]", "[y/n]:", "(y/n)", "(y/n):"]
 /// traecli's interactive login/auth screens (phrases verified against 0.201.7)
 /// replace the composer like a dialog but use a `>` menu or free-form fields, so
 /// the numbered/`❯` shapes never match them. A distinctive header phrase plus its
-/// Enter/Esc chrome is required, so transcript text cannot forge one.
+/// Enter/Esc chrome is required, so transcript text cannot forge one — and the
+/// chrome row has to *open* with its key chord, so a line that merely mentions
+/// pressing Esc does not count.
 nonisolated private func hasTraeAuthPrompt(_ lines: [String], _ window: [Int]) -> Bool {
   window.contains { isTraeAuthHeaderRow(lines[$0]) }
     && window.contains { isTraeAuthChromeRow(lines[$0]) }
@@ -1116,8 +1176,12 @@ nonisolated private func isTraeAuthHeaderRow(_ line: String) -> Bool {
 }
 
 nonisolated private func isTraeAuthChromeRow(_ line: String) -> Bool {
-  let lower = line.lowercased()
-  return lower.contains("press enter to sign in") || lower.contains("press enter to continue")
+  let lower = line.trimmingCharacters(in: .whitespaces).lowercased()
+  // The chrome opens with its key chord — `Press Esc to cancel`, `esc to cancel`,
+  // `Press Enter to sign in` — so a line that only mentions pressing Esc somewhere
+  // inside it does not count.
+  guard lower.hasPrefix("press ") || lower.hasPrefix("esc ") else { return false }
+  return lower.contains("enter to sign in") || lower.contains("enter to continue")
     || lower.contains("esc to cancel") || lower.contains("esc to go back")
 }
 
@@ -1169,8 +1233,22 @@ nonisolated private func hasTraeInterruptHint(_ rawLine: String) -> Bool {
   // own tail keeps its `Starting MCP servers` head, so it must not come back as a
   // clipped footer and earn the settle to Idle a spurious Done.
   if isTraeStartupProgressLine(lower) { return false }
-  if lower.contains("to interrupt") { return true }
+  // The status bar carries the working directory, so a checkout at
+  // `/tmp/how to interrupt` must not read as a running turn.
+  if isTraeStatusBarRow(lower) { return false }
+  if hasTraeInterruptChrome(lower) { return true }
   return isTraeClippedRunningFooter(rawLine)
+}
+
+/// The running footer's interrupt chrome, parentheses included: `(esc to interrupt)`,
+/// `(23s • esc to interrupt)`, `(50m 45s • ↓ 91.5K tokens • esc to interrupt • thought
+/// for 2s)`. Requiring the parentheses — rather than the bare phrase anywhere on the
+/// row — keeps ordinary content that merely mentions interrupting, such as a working
+/// directory named `/tmp/how to interrupt`, from reading as a running turn.
+nonisolated private func hasTraeInterruptChrome(_ lowercasedLine: String) -> Bool {
+  guard let phrase = lowercasedLine.range(of: "to interrupt") else { return false }
+  guard lowercasedLine[..<phrase.lowerBound].contains("(") else { return false }
+  return lowercasedLine[phrase.upperBound...].contains(")")
 }
 
 /// Whether the row at `index` is the live block's running mark, read for the whole
@@ -1207,10 +1285,14 @@ nonisolated private func isInTraeStartupProgressBlock(_ screen: TraeScreen, _ in
 
 /// The lead of a live-block footer or of its clipped remnant: a column-0 live glyph
 /// followed by a space. Transcript rows carry prose, tool output (`└`, indented), or
-/// their own `◆ Called …` heads, so nothing else in the block claims this shape.
+/// their own `◆ Called …` heads, so nothing else in the block claims this shape — and
+/// the composer's `❯` mark is excluded, because a prompt or a dialog's option row
+/// opens a row the same way without being live chrome.
 nonisolated private func isTraeLiveFooterLead(_ rawLine: String) -> Bool {
   let scalars = rawLine.unicodeScalars
-  guard let glyph = scalars.first, (0x2000...0x2BFF).contains(Int(glyph.value)) else { return false }
+  guard let glyph = scalars.first, (0x2000...0x2BFF).contains(Int(glyph.value)),
+    glyph.value != 0x276F
+  else { return false }
   return scalars.dropFirst().first == " "
 }
 
@@ -1260,8 +1342,12 @@ nonisolated private func isTraeStartupProgressLine(_ lowercasedLine: String) -> 
   lowercasedLine.contains("starting mcp server")
 }
 
-/// The composer's status row: the interrupt hint while a turn runs, otherwise
-/// `DeepSeek-V4.1-Flash · Context 100% left · /cwd … ▧ Workspace Edit` when idle.
+/// The composer's status row, below the closing border. It carries the idle signature
+/// (`<model> · Context <n>% left · <cwd> ▧ Workspace Edit`), and it can carry the
+/// running footer's own chrome in some renderings. Both are matched by structure: the
+/// row's values are dynamic — model, context percentage, working directory, permission
+/// mode — so a path such as `/tmp/how to interrupt` must not present as a running turn
+/// (see `isTraeStatusBarRow` and `hasTraeInterruptChrome`).
 nonisolated private func traeStatusState(_ line: String) -> AgentRawState? {
   if hasTraeInterruptHint(line) { return .working }
   let lower = line.lowercased()
@@ -1270,29 +1356,24 @@ nonisolated private func traeStatusState(_ line: String) -> AgentRawState? {
 }
 
 /// The live dialog's own text, for `agents read`. TraeCode CLI has no typed screen
-/// profile, so this reuses the same shape rules as `detectTrae`: the block that
-/// carries the bottom-most dialog marker — the question, its parameters, the option
-/// rows and their footer, a y/n prompt, or the login/auth chrome. Returns nil unless
-/// the current screen reads Blocked.
+/// profile, so this reuses the same shape rules as `detectTrae`: the dialog that
+/// carries the bottom-most marker — the question, its command or parameters, the
+/// option rows and their footer, a y/n prompt, or the login/auth chrome. Returns nil
+/// unless the current screen reads Blocked.
 ///
-/// The block is the run of *indented* rows ending at that marker, and it spans the
-/// blank lines traecli renders inside a dialog (between the question and its
-/// options). Stopping at the first preceding blank line returned only the options
-/// and the footer, so `agents read` could not tell its caller what would be
-/// approved; walking back to the first column-0 row keeps the question, the command
-/// or parameters, and the options together, and the internal blanks are restored so
-/// the text reads the way the pane renders it.
+/// The rows come from `traeDialogRegion`, the same region the detector resolves, so
+/// the two cannot disagree about where the dialog starts. Walking the rows directly —
+/// by indentation, or by stopping at the first preceding blank line — returned only
+/// the options and the footer of the trust prompt and the login screen, whose
+/// question and choices render at column 0, and dropped a form's question and
+/// parameters when they were separated from the options by a blank line. The dialog's
+/// own blank lines are restored so the text reads the way the pane renders it.
 nonisolated func traeBlockerText(in snapshot: AgentScreenSnapshot) -> String? {
   guard detectTrae(snapshot.text) == .blocked else { return nil }
   let screen = TraeScreen(snapshot.text)
-  guard let marker = screen.rows.indices.suffix(10).last(where: { isTraeDialogMarker(screen.lines[$0]) })
-  else { return nil }
-  var start = marker
-  while start > screen.rows.startIndex, screen.rows[start - 1].raw.hasPrefix(" ") {
-    start -= 1
-  }
+  guard let dialog = traeLiveDialog(screen) else { return nil }
   var components: [String] = []
-  for index in start...marker {
+  for index in dialog.region {
     if screen.blankBefore[index], !components.isEmpty { components.append("") }
     components.append(screen.lines[index])
   }

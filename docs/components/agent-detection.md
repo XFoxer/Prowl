@@ -174,20 +174,38 @@ therefore not Working evidence. A turn that is *still* streaming keeps its hint 
 appends the same segment (`… esc to interrupt) · 1 shell running… · /ps to manage`).
 
 A live dialog that replaces the composer is **Blocked**. Four shapes are matched by
-shape, not column (the dialog renders inside the live block's two-space gutter): a
-numbered option row marked with `❯` beside an unselected sibling; a form whose only
-chrome is its submit/navigate footer (`… to submit … | esc to cancel`, `… to navigate
-fields …`); a bracketed y/n confirmation (`… [y/N]`); and the interactive login/auth
-screens (a verified header phrase plus its Enter/Esc chrome). A dialog that renders
-*below* a composer box supersedes it — the box is then quoted transcript — while a
-dialog above the live composer stays transcript. Anything else is **unknown**, never
-Idle, so a screen without the live composer cannot forge an idle reading. A typed
-screen profile is still deferred — the working signature is the binary-verified `to
-interrupt` hint — but `prowl agents read` extracts the live dialog text as its blocker
-for a TraeCode CLI pane. The extraction keeps the whole dialog, from the question
-through the tool's command or parameters to the option rows and their footer, spanning
-the blank lines traecli renders inside it: a caller has to be able to see what it would
-be approving.
+shape, not column: a numbered option row marked with `❯` beside an unselected sibling;
+a form whose only chrome is its submit/navigate footer; a bracketed y/n confirmation
+(`… [y/N]`); and the interactive login/auth screens (a verified header phrase plus its
+Enter/Esc chrome). Most dialogs render inside the live block's two-space gutter, but
+the first-run trust prompt and the login screens render their question and choices at
+column 0, so the region is delimited by what it *stops* at instead of by indentation:
+the composer box (its prompt row, its full-width rules, the status bar under it) and
+the live block's or transcript's own glyph-headed rows, capped at 16 rows so a
+transcript running straight into a dialog cannot hand `agents read` unbounded history.
+A dialog that renders *below* a composer box supersedes it — the box is then quoted
+transcript — while a dialog above the live composer stays transcript. Anything else is
+**unknown**, never Idle, so a screen without the live composer cannot forge an idle
+reading.
+
+The chrome is matched by its structure, not by a phrase inside it. A footer row has to
+carry its cancel/navigate chrome as well as the submit or navigate phrase
+(`enter to submit | esc to cancel`, `↑/↓ to navigate fields   esc to cancel`), the
+running interrupt mark has to be parenthesized (`(esc to interrupt)`,
+`(23s • esc to interrupt)`), and the auth chrome has to open with its key chord
+(`Press Esc to cancel`). The composer's status bar — `<model> · Context <n>% left ·
+<cwd> ▧ Workspace Edit` — is dynamic chrome and never counts as dialog, footer, or
+running chrome, because it carries the working directory: without both rules a
+checkout at `/tmp/how to submit` read as a form footer and turned a settled composer
+into Blocked, and `/tmp/how to interrupt` turned it into Working.
+
+A typed screen profile is still deferred — the working signature is the binary-verified
+`to interrupt` hint — but `prowl agents read` extracts the live dialog text as its
+blocker for a TraeCode CLI pane. The extraction reads the same region the detector
+resolved, so the two cannot disagree about where the dialog starts, and it keeps the
+whole dialog, from the question through the tool's command or parameters to the option
+rows and their footer, spanning the blank lines traecli renders inside it: a caller has
+to be able to see what it would be approving.
 
 TraeCode CLI currently uses screen state and cooperative delivery, without a
 managed hook channel or transcript reader. Its TUI notification is off by

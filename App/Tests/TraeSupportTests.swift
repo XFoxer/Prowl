@@ -607,6 +607,92 @@ struct TraeSupportTests {
     #expect(traeBlockerText(in: agent.detectionSnapshot(from: idle)) == nil)
   }
 
+  // MARK: - Status-bar content must not decide the state
+
+  @Test func statusBarPathNamingModalChromeStaysIdle() throws {
+    let agent = try agent()
+    // The status bar carries the working directory, and footer matching used to accept
+    // bare substrings from it: a checkout named `/tmp/how to submit` turned a settled
+    // composer into Blocked, and `/tmp/how to interrupt` turned it into Working.
+    let border = String(repeating: "─", count: 120)
+    func idleScreen(_ path: String) -> String {
+      """
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · \(path) ▧ Workspace Edit
+      """
+    }
+    #expect(agent.detectState(in: idleScreen("/tmp/demo")) == .idle)
+    #expect(agent.detectState(in: idleScreen("/tmp/how to submit")) == .idle)
+    #expect(agent.detectState(in: idleScreen("/tmp/how to interrupt")) == .idle)
+    #expect(agent.detectState(in: idleScreen("/tmp/esc to cancel")) == .idle)
+
+    // It cannot override a real running footer either.
+    let footer =
+      "◆ traecli has mouse reporting enabled (24m 29s • ↑ 117K tokens • esc to interrupt) "
+      + "· 1 shell running… · /ps to manage"
+    let working = """
+      \(footer)
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · /tmp/how to submit ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: working) == .working)
+  }
+
+  @Test func transcriptMentioningSubmitWithoutChromeStaysUnknown() throws {
+    let agent = try agent()
+    // Dialog footers are matched by their structure — the cancel/navigate chrome plus
+    // the submit phrase — so a transcript line that merely mentions submitting is a
+    // screen with no live region at all, not a form waiting for input.
+    let screen = """
+      The plan says to submit the form and then wait for the upload.
+      Nothing else is on screen right now.
+      """
+    #expect(agent.detectState(in: screen) == .unknown)
+    #expect(traeBlockerText(in: agent.detectionSnapshot(from: screen)) == nil)
+  }
+
+  // MARK: - Blocker text keeps the whole dialog
+
+  @Test func blockerTextKeepsUnindentedDialogsWhole() throws {
+    let agent = try agent()
+    // The trust prompt and the login screens render at column 0, so a walk that
+    // followed only indented rows kept the footer and dropped everything above it: the
+    // question and the choices a caller has to read before approving.
+    let trust = """
+      You are in /Users/me/App
+
+      Do you trust the contents of this directory?
+
+      ❯ 1. Yes, continue
+        2. No, quit
+
+      Press enter to continue
+      """
+    let trustText = try #require(traeBlockerText(in: agent.detectionSnapshot(from: trust)))
+    #expect(trustText.contains("You are in /Users/me/App"))
+    #expect(trustText.contains("Do you trust the contents of this directory?"))
+    #expect(trustText.contains("❯ 1. Yes, continue"))
+    #expect(trustText.contains("2. No, quit"))
+    #expect(trustText.contains("Press enter to continue"))
+
+    let login = """
+      Sign in with browser account
+      > Sign in with Device Code
+
+      Press Enter to sign in
+      Press Esc to cancel
+      """
+    let loginText = try #require(traeBlockerText(in: agent.detectionSnapshot(from: login)))
+    #expect(loginText.contains("Sign in with browser account"))
+    #expect(loginText.contains("Sign in with Device Code"))
+    #expect(loginText.contains("Press Enter to sign in"))
+    #expect(loginText.contains("Press Esc to cancel"))
+  }
+
   // MARK: - Active region: composer against dialog
 
   @Test func historicalComposerAboveTheApprovalDialogReadsAsBlocked() throws {

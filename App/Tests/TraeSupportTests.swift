@@ -585,8 +585,18 @@ struct TraeSupportTests {
         enter to submit | esc to cancel
       """
     let text = try #require(traeBlockerText(in: agent.detectionSnapshot(from: blocked)))
+    // The whole dialog, not just its options: a caller has to be able to tell what it
+    // would approve. The question and the tool's parameters are separated from the
+    // options by a blank line, and stopping the walk at that blank returned only
+    // `❯ 1. Allow …` and the footer.
+    #expect(text.contains("Field 1/1"))
+    #expect(text.contains("Allow the mobile-mcp MCP server to run tool \"mobile_save_screenshot\"?"))
+    #expect(text.contains("device: Pixel_10_Pro_XL"))
+    #expect(text.contains("saveTo: /tmp/shot1.png"))
     #expect(text.contains("1. Allow"))
     #expect(text.contains("esc to cancel"))
+    // The dialog's own blank lines survive, so the text reads like the pane.
+    #expect(text.contains("/tmp/shot1.png\n\n"))
 
     let idle = """
       \(border)
@@ -595,6 +605,56 @@ struct TraeSupportTests {
         DeepSeek-V4.1-Flash · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
       """
     #expect(traeBlockerText(in: agent.detectionSnapshot(from: idle)) == nil)
+  }
+
+  // MARK: - Active region: composer against dialog
+
+  @Test func historicalComposerAboveTheApprovalDialogReadsAsBlocked() throws {
+    let agent = try agent()
+    // The transcript can quote a composer box (`❯` row + full-width rule), and traecli
+    // renders the live approval below it. Searching the whole screen for a composer let
+    // that quoted box decide, so the pane read Idle — and `agents read` returned no
+    // blocker — while it was waiting for approval. The lower of the two live regions is
+    // the active one, so the dialog wins here.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ❯ Refactor the parser and keep the CLI compatible
+      \(border)
+        Allow the mobile-mcp MCP server to run tool "mobile_save_screenshot"?
+
+        device: Pixel_10_Pro_XL
+        saveTo: /tmp/shot1.png
+
+        ❯ 1. Allow                   Run the tool and continue.
+          2. Allow for this session  Run the tool and remember this choice for this session.
+          3. Cancel                  Cancel this tool call
+        enter to submit | esc to cancel
+      """
+    #expect(agent.detectState(in: screen) == .blocked)
+    let text = try #require(traeBlockerText(in: agent.detectionSnapshot(from: screen)))
+    #expect(text.contains("mobile_save_screenshot"))
+    #expect(text.contains("saveTo: /tmp/shot1.png"))
+    #expect(text.contains("1. Allow"))
+    #expect(text.contains("esc to cancel"))
+  }
+
+  @Test func quotedApprovalOptionsAboveTheLiveComposerStayIdle() throws {
+    let agent = try agent()
+    // The mirror image: the quoted block sits *above* the live composer, so the
+    // composer is the active region and the past dialog is transcript. Resolving by
+    // position has to keep this reading Idle and yield no blocker.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+        ❯ 1. Allow     Run the tool and continue.
+          2. Cancel    Cancel this tool call
+        enter to submit | esc to cancel
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+    #expect(traeBlockerText(in: agent.detectionSnapshot(from: screen)) == nil)
   }
 
   // MARK: - Clipped live chrome and the title corroboration
@@ -638,6 +698,44 @@ struct TraeSupportTests {
       ❯ Explain this codebase
       \(border)
         DeepSeek-V4.1-Flash (MAX) high · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func wrappedMcpBootProgressBlockAboveAnIdleComposerReadsAsIdle() throws {
+    let agent = try agent()
+    // The boot progress line is a logical line: if a terminal wraps it, the
+    // `esc to interrupt` footer lands on a row that carries none of the header, and
+    // excluding startup per row read the wrapped form as a running turn — a cold start
+    // then flashed Working and earned a spurious Done on the settle. The exclusion is
+    // applied to the block, so the footer row is recognized as startup chrome.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ✦ Starting MCP servers (1/5): XcodeBuildMCP, code-review-graph, mobile-mcp,
+        sentry-mcp (0s • esc to interrupt)
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash (MAX) high · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func capturedNarrowTerminalBootScreenReadsAsIdle() throws {
+    let agent = try agent()
+    // Captured from traecli 0.209.1 in a 40-column PTY during startup (the phase counter
+    // advanced 0/3 → 1/3 → 2/3 while the spinner glyph rotated). At that width traecli
+    // *clips* the progress line instead of wrapping it — the server list ends in `…` and
+    // the elapsed/token chrome is gone with the `esc to interrupt` footer — so the screen
+    // must read Idle, not Working. The wrapped form above is the defensive case: traecli
+    // does not produce it today, and it must not read as a running turn if it ever does.
+    let border = String(repeating: "─", count: 40)
+    let screen = """
+      ◇ Starting MCP servers (0/3): XcodeBuil…
+      \(border)
+      ❯ Summarize recent commits
+      \(border)
+        Dee… ▧ Workspace Edit · ← for agents
       """
     #expect(agent.detectState(in: screen) == .idle)
   }

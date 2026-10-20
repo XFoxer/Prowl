@@ -231,9 +231,11 @@ struct AgentDetectionPipelineTests {
     // traecli redraws its live region on its own clock — verified on 0.209.1, which
     // draws as slowly as once a second while a turn streams — so a poll can land on a
     // frame whose running footer has not been painted back yet. That frame reads Idle
-    // raw, but one frame is not evidence that the turn ended: publishing it flipped the
-    // pane Working → Idle → Working for a single poll (and earned a spurious Done badge
-    // on an unviewed pane).
+    // raw, but Idle frames alone are not evidence that the turn ended: publishing the
+    // first one flipped the pane Working → Idle → Working for a single poll (and earned
+    // a spurious Done badge on an unviewed pane), and a burst of them at the poll
+    // cadence confirmed that same non-event. The verdict has to keep arriving for the
+    // confirmation window.
     let before = try #require(await report(Self.traeWorkingScreen, agent: .trae))
     #expect(before.fallbackState == .working)
     #expect(before.displayState == .working)
@@ -244,18 +246,21 @@ struct AgentDetectionPipelineTests {
     #expect(gap.displayState == .working)
     #expect(gap.isBusy)
 
-    // The turn keeps streaming: the hold is dropped without the pane ever settling.
+    // The redraw-gap replay: Idle → Idle → Working at the 300 ms cadence, without ever
+    // publishing the intermediate Idle.
+    clock.now += 0.3
+    let secondGap = try #require(await report(Self.traeIdleScreen, agent: .trae))
+    #expect(secondGap.displayState == .working)
     clock.now += 0.3
     let resumed = try #require(await report(Self.traeWorkingScreen, agent: .trae))
     #expect(resumed.displayState == .working)
 
-    // A lone gap frame again, then the composer that stays: the second consecutive Idle
-    // verdict is what confirms the turn really ended.
+    // A genuine settle: the composer stays, and the Idle verdict keeps arriving past the
+    // window.
     clock.now += 0.3
-    let secondGap = try #require(await report(Self.traeIdleScreen, agent: .trae))
-    #expect(secondGap.displayState == .working)
-
-    clock.now += 0.3
+    let settling = try #require(await report(Self.traeIdleScreen, agent: .trae))
+    #expect(settling.displayState == .working)
+    clock.now += 2
     let settled = try #require(await report(Self.traeIdleScreen, agent: .trae))
     #expect(settled.fallbackState == .idle)
     #expect(settled.displayState == .idle)

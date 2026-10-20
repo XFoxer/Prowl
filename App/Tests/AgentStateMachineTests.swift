@@ -39,15 +39,37 @@ struct AgentStateMachineTests {
     #expect(machine.receive(screen(.working), now: 3).state == .working)
     #expect(machine.receive(screen(.idle), now: 4).state == .working)
     #expect(machine.receive(screen(.working), now: 5).state == .working)
+  }
 
-    // Two consecutive Idle verdicts confirm a settled turn.
-    #expect(machine.receive(screen(.idle), now: 6).state == .working)
+  @Test func repeatedIdleReadsInsideTheWindowCannotConfirmATurn() {
+    // Counting observations instead of time let a burst of Idle frames confirm a
+    // running turn. `agents read` polls the pane outside the detection cadence, so two
+    // Idle reads of one frame arrive a millisecond apart, and a repaint gap publishes
+    // Idle frames at the 300 ms cadence until the footer returns. The verdict has to
+    // keep arriving for the window instead, which is what separates a gap from a
+    // settled turn.
+    var machine = AgentStateMachine()
+    machine.requiresConfirmedIdleScreen = true
+    machine.confirmedIdleWindow = 2
+    _ = machine.receive(screen(.working), now: 0)
+    #expect(machine.receive(screen(.idle), now: 1).state == .working)
+    // The same frame, re-read out of cadence: no new evidence, no confirmation.
+    #expect(machine.receive(screen(.idle), now: 1.001).state == .working)
+    // The redraw-gap replay: Working → Idle → Idle → Working at the poll cadence.
+    #expect(machine.receive(screen(.idle), now: 1.3).state == .working)
+    #expect(machine.receive(screen(.idle), now: 1.6).state == .working)
+    #expect(machine.receive(screen(.working), now: 1.9).state == .working)
+    // A genuine settle confirms, because the Idle verdict keeps arriving past the
+    // window.
+    #expect(machine.receive(screen(.idle), now: 5).state == .working)
+    #expect(machine.receive(screen(.idle), now: 6.9).state == .working)
     #expect(machine.receive(screen(.idle), now: 7).state == .idle)
   }
 
   @Test func idleConfirmationGatesOnlyTheWorkingEdge() {
     var machine = AgentStateMachine()
     machine.requiresConfirmedIdleScreen = true
+    machine.confirmedIdleWindow = 2
     // Idle → Working stays immediate so a starting turn never lags.
     #expect(machine.receive(screen(.idle), now: 0).state == .idle)
     #expect(machine.receive(screen(.working), now: 1).state == .working)
@@ -60,6 +82,7 @@ struct AgentStateMachineTests {
   @Test func unreadableScreenNeitherConfirmsNorCancelsTheIdleHold() {
     var machine = AgentStateMachine()
     machine.requiresConfirmedIdleScreen = true
+    machine.confirmedIdleWindow = 2
     _ = machine.receive(screen(.working), now: 0)
     #expect(machine.receive(screen(.idle), now: 1).state == .working)
     // `unknown` renders no verdict, so it neither confirms the hold nor re-arms it.
@@ -67,7 +90,9 @@ struct AgentStateMachineTests {
     // stale Working, which is the failure that reading a hint-less composer as Idle
     // exists to avoid.
     #expect(machine.receive(screen(.unknown), now: 2).state == .working)
-    #expect(machine.receive(screen(.idle), now: 3).state == .idle)
+    // The hold started at the first Idle frame and keeps running, so the window
+    // elapses here even though this is only the second readable Idle verdict.
+    #expect(machine.receive(screen(.idle), now: 4).state == .idle)
   }
 
   @Test func agentsWithoutTheConfirmationPublishIdleOnTheFirstFrame() {

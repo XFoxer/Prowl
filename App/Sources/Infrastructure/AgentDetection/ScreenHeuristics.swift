@@ -930,8 +930,7 @@ nonisolated private func detectTrae(_ content: String) -> AgentRawState {
 
   // No composer. A running indicator in the live tail beats a quoted question,
   // and a real dialog carries no such indicator.
-  let lines = screen.lines
-  if screen.rows.indices.suffix(10).contains(where: { hasTraeInterruptHint(lines[$0]) }) {
+  if screen.rows.indices.suffix(10).contains(where: { hasTraeInterruptHint(screen.rows[$0].raw) }) {
     return .working
   }
   if hasTraeLiveDialog(screen) { return .blocked }
@@ -1011,7 +1010,7 @@ nonisolated private func traeComposer(_ screen: TraeScreen) -> TraeComposer? {
     // The live status row is indented (a two-space gutter) directly below the
     // closing border, so it is matched by signature rather than by column. Only
     // this row — never the rows above the box — can speak for the live state.
-    let status = bottom + 1 < rows.endIndex ? traeStatusState(lines[bottom + 1]) : nil
+    let status = bottom + 1 < rows.endIndex ? traeStatusState(rows[bottom + 1].raw) : nil
     // The running indicator renders at the top of the live block above the box:
     // it and every row under it — a rotating `Tip:`, the agent's todo checklist,
     // a wrapped indicator — form the contiguous non-blank run directly above this
@@ -1026,7 +1025,7 @@ nonisolated private func traeComposer(_ screen: TraeScreen) -> TraeComposer? {
     let window = start..<index
     composer = TraeComposer(
       status: status,
-      hasWorkingIndicator: window.contains(where: { hasTraeInterruptHint(lines[$0]) }))
+      hasWorkingIndicator: window.contains(where: { hasTraeInterruptHint(rows[$0].raw) }))
     index = bottom + 1
   }
   return composer
@@ -1130,10 +1129,61 @@ nonisolated private func isTraeNumberedOption(_ text: String) -> Bool {
 /// `✦ Starting MCP servers (0/3): … (0s • esc to interrupt)` above an otherwise
 /// idle composer; counting it as a running turn flashed Working during startup
 /// and let the settle to the idle composer earn a spurious Done badge.
-nonisolated private func hasTraeInterruptHint(_ line: String) -> Bool {
-  let lower = line.lowercased()
-  guard lower.contains("to interrupt") else { return false }
-  return !isTraeStartupProgressLine(lower)
+///
+/// traecli also clips live chrome to the pane width before writing it, so a wide
+/// live-block header loses the tail: `✦ <streaming snippet> (42m 53s • ↑ 183K
+/// tokens …` arrives with neither `esc to interrupt` nor the `/ps` chrome, and a
+/// running turn then read as a settled composer — a false Idle badge, and a
+/// spurious Done on an unviewed pane. See `isTraeClippedRunningFooter`.
+///
+/// Takes the raw row: the clipped form is recognized by its column-0 glyph, which
+/// the trimmed `text` of a screen row would have dropped.
+nonisolated private func hasTraeInterruptHint(_ rawLine: String) -> Bool {
+  let lower = rawLine.lowercased()
+  if lower.contains("to interrupt") { return !isTraeStartupProgressLine(lower) }
+  return isTraeClippedRunningFooter(rawLine)
+}
+
+/// The live-block header's clipped remnant: a column-0 live glyph, then the
+/// elapsed-time chrome that precedes the token/shell chrome, e.g.
+/// `❖ The live block header might be rendered above the visible window (42m 53s •`.
+/// The opening parenthesis and its duration are the last marks traecli renders
+/// before it truncates, so they survive where the interrupt hint does not. The
+/// column-0 glyph keeps transcript prose and tool output (`  └ (2s · timeout 2m)`,
+/// which uses `·`, not `•`, and is indented) from speaking for the live state.
+nonisolated private func isTraeClippedRunningFooter(_ rawLine: String) -> Bool {
+  let scalars = rawLine.unicodeScalars
+  guard let glyph = scalars.first, (0x2000...0x2BFF).contains(Int(glyph.value)),
+    scalars.dropFirst().first == " "
+  else { return false }
+  var remainder = rawLine[...]
+  while let open = remainder.firstIndex(of: "(") {
+    let rest = remainder[remainder.index(after: open)...]
+    if let bullet = rest.range(of: " • "), isTraeElapsedDuration(rest[..<bullet.lowerBound]) {
+      return true
+    }
+    remainder = rest
+  }
+  return false
+}
+
+/// `42m 53s`, `23s`, `1h 02m 03s` — the elapsed time traecli renders inside live
+/// chrome. Only digits, the `h`/`m`/`s` units, and single separating spaces.
+nonisolated private func isTraeElapsedDuration(_ text: Substring) -> Bool {
+  guard text.last == "s", text.first != " ", text.contains(where: \.isNumber) else { return false }
+  var previousWasSpace = false
+  for character in text {
+    if character == " " {
+      guard !previousWasSpace else { return false }
+      previousWasSpace = true
+      continue
+    }
+    guard character.isNumber || character == "h" || character == "m" || character == "s" else {
+      return false
+    }
+    previousWasSpace = false
+  }
+  return true
 }
 
 /// traecli's boot progress line (`✦ Starting MCP servers (n/m): <names> (0s •
@@ -1173,6 +1223,26 @@ nonisolated func traeBlockerText(in snapshot: AgentScreenSnapshot) -> String? {
 nonisolated private func isTraeDialogMarker(_ line: String) -> Bool {
   isTraeSelectionRow(line) || isTraeUnselectedOptionRow(line) || isTraeDialogFooterRow(line)
     || isTraeYesNoPromptRow(line) || isTraeAuthHeaderRow(line) || isTraeAuthChromeRow(line)
+}
+
+/// Whether the pane's terminal title says a traecli turn is running. The TUI
+/// animates a braille spinner ahead of the thread title while a turn streams
+/// (`⠋ 排查修复…`) and drops it the moment the turn settles — a background shell
+/// that outlives the turn does not keep it up, which is why a pane left waiting
+/// on one still reads Idle (docs-ai 083).
+///
+/// The screen is the primary evidence, but it is a rendering of the live tail and
+/// can be stolen: traecli clips the live-block header to the pane width (see
+/// `isTraeClippedRunningFooter`), and a pane scrolled into history or caught mid
+/// repaint can show a settled-looking composer while the turn is still running.
+/// The title mark is written by the TUI itself, so it survives all three — it is
+/// corroboration that a screen Idle verdict must not settle a running turn.
+nonisolated func traeTitleShowsRunningTurn(_ title: String?) -> Bool {
+  guard let title else { return false }
+  guard let first = title.trimmingCharacters(in: .whitespaces).unicodeScalars.first else {
+    return false
+  }
+  return (0x2800...0x28FF).contains(Int(first.value))
 }
 
 // Antigravity CLI (`agy`, verified live on 1.3.2): the live region is the

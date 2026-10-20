@@ -131,6 +131,26 @@ confirms a settled turn; a Working or Blocked frame drops the hold, and an unrea
 frame neither confirms nor cancels it. Idle → Working, Working → Blocked, and settling
 from unknown stay immediate, so a starting turn and a dialog are never delayed.
 
+traecli clips that footer to the pane width before it reaches the terminal, so a wide
+live-block header arrives with its tail cut off: `✦ <streaming snippet> (42m 53s • ↑
+183K tokens …` keeps neither `esc to interrupt` nor the `/ps` chrome, and the running
+turn then reads as a settled composer (captured live on 0.209.1 at the moment the
+badge flipped). Two guards cover that frame. The detector treats a clipped header as
+the running hint: a column-0 live glyph (the rotating sparkle marks, `✦ ✧ ❖ ◆ ◈ ⋄ …`)
+followed by the elapsed-time chrome `(<elapsed> •`. Prose, tool output, and quoted
+chrome cannot forge it — `└ Run finished (2s · timeout 2m)` is indented and uses `·`,
+not `•` — so a transcript line only qualifies when it opens with that glyph. Clipping
+can cut even the elapsed opener off, and a pane scrolled into history or caught mid
+repaint can drop the live block entirely, so an **Idle** screen verdict is also
+corroborated against the pane's terminal title: traecli animates a braille spinner
+ahead of the thread title while a turn runs (`⠋ Fix iOS H5 input keyboard issue`)
+and drops it when the turn settles — a background shell left running does not keep it
+up — so a spinning title turns an Idle screen verdict into Working, reported as
+`screen.titleSpinner`. The TUI writes that mark itself, so unlike the composer it
+survives clipping, scrolling, and slow repaints. Working, Blocked, and unknown
+verdicts pass through unchanged: the corroboration only prevents a false Idle (and the
+spurious Done it earns on an unviewed pane).
+
 traecli 0.209.1 can also hold **background shells** (`/ps to manage`). While one runs,
 a *settled* turn's footer becomes `◇ <n> background shell running… you can still chat ·
 /ps to manage` — the interrupt hint and the elapsed counter are both gone — so the pane
@@ -455,7 +475,8 @@ takes effect on the next active scan, without a time-based Working hold or gener
 screen-motion inference. One exception covers agents whose Working evidence is
 screen-only (`DetectedAgent.requiresConfirmedIdleScreen`, currently `trae`): an Idle
 frame over a Working pane is applied only once the following poll reports Idle too, so
-a single mid-repaint frame cannot end a turn. Viewer overlays (Claude's transcript /
+a single mid-repaint frame cannot end a turn; the TraeCode CLI section above adds the
+clipped-header and title-spinner corroboration. Viewer overlays (Claude's transcript /
 history-search views) are another exception: their chrome covers the live status area,
 so those frames keep the last trusted state instead of forcing Idle.
 

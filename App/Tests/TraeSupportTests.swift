@@ -596,4 +596,90 @@ struct TraeSupportTests {
       """
     #expect(traeBlockerText(in: agent.detectionSnapshot(from: idle)) == nil)
   }
+
+  // MARK: - Clipped live chrome and the title corroboration
+
+  @Test func clippedLiveHeaderKeepingOnlyElapsedChromeReadsAsWorking() throws {
+    let agent = try agent()
+    // traecli clips live chrome to the pane width before writing it, so a live-block
+    // header whose streaming snippet is wide loses its tail: the running footer reaches
+    // the terminal as `<glyph> <snippet> (42m 53s • ↑ 183K tokens …`, with neither
+    // `esc to interrupt` nor the `/ps` chrome. Reading that frame as a settled composer
+    // flipped a running turn to Idle — and earned a spurious Done on an unviewed pane —
+    // while the turn was still streaming. The header line below is the one captured live
+    // from traecli 0.209.1 at the moment the badge flipped.
+    let border = String(repeating: "─", count: 120)
+    let clippedHeader =
+      "❖ The live block header might be rendered *above* the visible window when the live block is tall "
+      + "and the pane is short! (42m 53s • ↑ 183K tokens …"
+    let screen = """
+      \(clippedHeader)
+        └ ■ Fix the false Idle badge
+          ◻ Add a regression test
+      \(border)
+      ❯ Find and fix a bug in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 64% left · ~/opt/Prowl · feat/traecli-support · +1582 -58  ⛉ Auto Mode
+      """
+    #expect(agent.detectState(in: screen) == .working)
+  }
+
+  @Test func proseMentioningElapsedChromeWithoutALiveGlyphStaysIdle() throws {
+    let agent = try agent()
+    // Only a column-0 live glyph makes a line the live block's header. Prose, tool
+    // output, and quoted chrome (`└ Run finished (2s · timeout 2m)`) must not be able
+    // to speak for a settled composer, or the badge would stick on Working.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      Teardown took (42m 53s • ↑ 183K tokens) in the previous run.
+
+        └ Run finished (2s • timeout 2m)
+      \(border)
+      ❯ Find and fix a bug in @filename
+      \(border)
+        DeepSeek-V4.1-Flash · Context 64% left · ~/opt/Prowl · feat/traecli-support · +1582 -58  ⛉ Auto Mode
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func titleSpinnerMarksARunningTurn() throws {
+    // The TUI animates a braille spinner ahead of the thread title while a turn runs.
+    #expect(traeTitleShowsRunningTurn("⠋ 排查修复traecli状态显示异常 | Prowl"))
+    #expect(traeTitleShowsRunningTurn("⠸ Fix iOS H5 input keyboard issue | CBrain-S"))
+    // Settled turns, unnamed threads, and shells carry no spinner.
+    #expect(!traeTitleShowsRunningTurn("排查修复traecli状态显示异常 | Prowl"))
+    #expect(!traeTitleShowsRunningTurn("Run tick loop and report ticks | trae-scrolltest"))
+    #expect(!traeTitleShowsRunningTurn(""))
+    #expect(!traeTitleShowsRunningTurn(nil))
+    // A braille glyph anywhere but the front is not the running mark.
+    #expect(!traeTitleShowsRunningTurn("Fix ⠋ the spinner"))
+  }
+
+  @Test func titleSpinnerCorroboratesAnIdleScreenVerdict() throws {
+    let agent = try agent()
+    let idle = AgentScreenDetection(state: .idle, reason: .legacyDetector)
+    let working = AgentScreenDetection(state: .working, reason: .legacyDetector)
+    let blocked = AgentScreenDetection(state: .blocked, reason: .legacyDetector)
+
+    let corroborated = WorktreeTerminalState.corroboratedScreenDetection(
+      idle, agent: agent, title: "⠋ Fix the false Idle badge | Prowl")
+    #expect(corroborated.state == .working)
+    #expect(corroborated.reason == .titleSpinner)
+
+    // A settled title leaves the screen verdict alone, whatever it says.
+    #expect(
+      WorktreeTerminalState.corroboratedScreenDetection(
+        idle, agent: agent, title: "Fix the false Idle badge | Prowl") == idle)
+    #expect(
+      WorktreeTerminalState.corroboratedScreenDetection(
+        working, agent: agent, title: "⠋ Fix the false Idle badge | Prowl") == working)
+    // A dialog the screen reports stays reported while the turn keeps running.
+    #expect(
+      WorktreeTerminalState.corroboratedScreenDetection(
+        blocked, agent: agent, title: "⠋ Fix the false Idle badge | Prowl") == blocked)
+    // The corroboration is traecli's: another agent's title spinner is not evidence.
+    #expect(
+      WorktreeTerminalState.corroboratedScreenDetection(
+        idle, agent: .codex, title: "⠋ Codex | Prowl") == idle)
+  }
 }

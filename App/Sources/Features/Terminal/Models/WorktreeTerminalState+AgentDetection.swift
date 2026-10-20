@@ -272,7 +272,11 @@ extension WorktreeTerminalState {
     // A live-but-idle agent is polled every 300 ms and `detectState` re-splits,
     // lowercases, and scans the whole screen each time; skipping that for
     // identical text is the bulk of steady-state detection cost.
-    return (activeText, cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: activeText))
+    let scan = cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: activeText)
+    return (
+      activeText,
+      Self.corroboratedScreenDetection(scan, agent: agent, title: view.bridge.state.title)
+    )
   }
 
   private static func processGeneration(_ identified: IdentifiedAgentProcess?) -> AgentProcessGeneration? {
@@ -571,6 +575,29 @@ extension WorktreeTerminalState {
     )
     lastAgentScreenScanBySurface[surfaceID] = scan
     return detection
+  }
+
+  /// The screen verdict after the pane's own out-of-band evidence is applied.
+  ///
+  /// traecli animates a braille spinner into the terminal title while a turn runs
+  /// and drops it when the turn settles, so the title is the one running mark the
+  /// screen cannot lose: a long live-block header clipped to the pane width, a pane
+  /// scrolled into history, and a mid-repaint frame all leave a settled-looking
+  /// composer behind while the turn is still running (docs-ai 083). A lone Idle
+  /// screen verdict must not settle such a turn — the pane would flip to Idle, and
+  /// on an unviewed pane earn a spurious Done badge.
+  ///
+  /// Scoped to Idle: a screen verdict of Working, Blocked, or Unknown already
+  /// carries its own meaning, and a dialog the screen reports stays reported.
+  nonisolated static func corroboratedScreenDetection(
+    _ detection: AgentScreenDetection,
+    agent: DetectedAgent,
+    title: String?
+  ) -> AgentScreenDetection {
+    guard agent == .trae, detection.state == .idle, traeTitleShowsRunningTurn(title) else {
+      return detection
+    }
+    return AgentScreenDetection(state: .working, reason: .titleSpinner)
   }
 
   private func resolvedLaunchProcess(

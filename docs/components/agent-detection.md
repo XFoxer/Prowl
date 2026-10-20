@@ -110,9 +110,15 @@ identifies the session exactly. `TRAE_HOME` relocates the whole `~/.trae` tree
 `cli/sessions`), so a managed Agent Profile binds the account through `TRAE_HOME`.
 
 The detector reads the whole active screen — not a bottom tail — and resolves the live
-region by position: the composer box (a full-width `─` separator, a column-0 `❯` prompt
-row whose wrapped input continues on indented rows, and the status row directly below
-it) and a live dialog are both searched, and the lower of the two decides. The
+region by position: the composer box (a column-0 `❯` prompt row whose wrapped input
+continues on indented rows, the `─` separator that draft run ends on, and the status row
+directly below it) and a live dialog are both searched, and the lower of the two
+decides. The box is delimited by its own rows, never by a width measured against the
+rest of the screen: the pane's text is read non-rectangularly and soft-wrapped lines are
+joined, so a historical *logical* line — the agent's own output leaving a rule behind —
+can be wider than the live border, and sizing that border by the longest rule on screen
+lost the whole box (an idle `❯ Draft` read unknown instead of idle, and a numbered draft
+fell through to the dialog shapes as if it were approval options). The
 transcript quotes both shapes, so a quoted composer above current approval options must
 not hide the dialog, and a quoted dialog above the live composer must not read as
 Blocked. Everything inside the box is the user's draft, so a quoted transcript above it
@@ -180,7 +186,7 @@ a form whose only chrome is its submit/navigate footer; a bracketed y/n confirma
 Enter/Esc chrome). Most dialogs render inside the live block's two-space gutter, but
 the first-run trust prompt and the login screens render their question and choices at
 column 0, so the region is delimited by what it *stops* at instead of by indentation:
-the composer box (its prompt row, its full-width rules, the status bar under it) and
+the composer box (its prompt row, its `─` rules, the status bar under it) and
 the live block's or transcript's own glyph-headed rows, capped at 16 rows so a
 transcript running straight into a dialog cannot hand `agents read` unbounded history.
 A dialog that renders *below* a composer box supersedes it — the box is then quoted

@@ -743,6 +743,53 @@ struct TraeSupportTests {
     #expect(traeBlockerText(in: agent.detectionSnapshot(from: screen)) == nil)
   }
 
+  // MARK: - Composer boundaries are local to the box
+
+  @Test func separatorWiderThanTheComposerAboveItKeepsTheBox() throws {
+    let agent = try agent()
+    // The pane's text is extracted non-rectangularly and Ghostty joins soft-wrapped
+    // lines, so a historical *logical* line can be wider than the pane: the agent's
+    // own output can leave a rule behind that out-measures the live composer. Sizing
+    // the composer's borders by the longest rule on screen then read the box as
+    // absent, and an idle `❯ Draft` fell through to unknown — which in turn let the
+    // state machine keep the previous turn's Working.
+    let historical = String(repeating: "─", count: 100)
+    let border = String(repeating: "─", count: 80)
+    let screen = """
+      ✔ Summarized 3 shell commands
+
+      \(historical)
+
+      \(border)
+      ❯ Draft
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
+  @Test func numberedDraftUnderAWiderSeparatorStaysIdleInsteadOfBlocked() throws {
+    let agent = try agent()
+    // The same screen with a numbered draft: the box was lost the same way, and the
+    // draft's own rows then matched the dialog shapes — a `❯`-marked option beside an
+    // unselected numbered sibling — so a settled composer read Blocked.
+    let historical = String(repeating: "─", count: 100)
+    let border = String(repeating: "─", count: 80)
+    let screen = """
+      ✔ Summarized 3 shell commands
+
+      \(historical)
+
+      \(border)
+      ❯ 1. First draft line
+        2. Second draft line
+      \(border)
+        DeepSeek-V4.1-Flash · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+    #expect(traeBlockerText(in: agent.detectionSnapshot(from: screen)) == nil)
+  }
+
   // MARK: - Clipped live chrome and the title corroboration
 
   @Test func clippedLiveHeaderKeepingOnlyElapsedChromeReadsAsWorking() throws {

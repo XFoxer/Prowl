@@ -893,9 +893,9 @@ nonisolated private func hasBrailleSpinner(_ content: String) -> Bool {
 
 // TraeCode CLI (`traecli`/`traex`, verified 0.201.7): a Codex-CLI fork with its
 // own glyphs (`❯` for the composer and the selection mark, not Codex's `›`). The
-// live region sits at the bottom of the screen: a full-width `─` composer
-// border, a column-0 `❯` prompt row (wrapped input continues on indented rows),
-// a second full-width `─` border, and the built-in status row directly below it
+// live region sits at the bottom of the screen: a `─` composer border, a column-0
+// `❯` prompt row (wrapped input continues on indented rows), a closing `─` border,
+// and the built-in status row directly below it
 // — `<model> · Context <n>% left · <cwd> ▧ Workspace Edit` — rendered with a
 // two-space gutter. That status row reads the same whether a turn runs or not,
 // so it is only ever evidence of an idle composer: a running turn is signalled
@@ -976,11 +976,14 @@ private struct TraeScreen {
 }
 
 /// The live composer box: a column-0 `❯` prompt row, its indented continuation
-/// rows, the closing full-width `─` separator, and the built-in status row
-/// directly below the separator. Everything inside the box is the user's own
-/// draft, so a numbered draft or the words `to interrupt` typed into it must
-/// never read as a dialog option or a running turn. Returns nil when no such box
-/// renders (a choice dialog replaces the composer).
+/// rows, the closing `─` separator, and the built-in status row directly below the
+/// separator. The box is delimited by its own rows — the separator is the rule the
+/// prompt's draft run ends on — never by a screen-wide width, because the pane's
+/// text is read non-rectangularly and a historical logical line can out-measure the
+/// live border. Everything inside the box is the user's own draft, so a numbered
+/// draft or the words `to interrupt` typed into it must never read as a dialog
+/// option or a running turn. Returns nil when no such box renders (a choice dialog
+/// replaces the composer).
 private struct TraeComposer {
   let status: AgentRawState?
   let hasWorkingIndicator: Bool
@@ -992,13 +995,18 @@ nonisolated private func traeComposer(_ screen: TraeScreen) -> TraeComposer? {
   let rows = screen.rows
   let lines = screen.lines
   let isColumnZero = { (index: Int) -> Bool in !rows[index].raw.hasPrefix(" ") }
-  // The composer separator is the longest column-0 `─` rule on screen; a
-  // narrower rule (an echoed prompt, a markdown rule) is not it.
+  // The closing border is the column-0 `─` rule that the prompt row's own draft run
+  // ends on, read from the box's local rows alone. Its width is never measured
+  // against the rest of the screen: traecli's screen text arrives through a
+  // non-rectangular read and Ghostty joins soft-wrapped lines, so a historical
+  // *logical* line can be wider than the pane and wider than the live border — the
+  // agent's own output leaving a rule behind is enough. Sizing the border by the
+  // longest rule on screen dropped the whole box on such a screen: an idle
+  // `❯ Draft` read `.unknown` and kept the previous turn's Working, and a numbered
+  // draft fell through to the dialog shapes and read as approval options.
   let isRule = { (index: Int) -> Bool in
     isColumnZero(index) && lines[index].allSatisfy { $0 == "─" }
   }
-  let fullWidth = rows.indices.filter(isRule).map { lines[$0].count }.max() ?? 0
-  let isBorder = { (index: Int) -> Bool in isRule(index) && lines[index].count == fullWidth }
   let isPrompt = { (index: Int) -> Bool in isColumnZero(index) && isTraePromptRow(lines[index]) }
 
   var composer: TraeComposer?
@@ -1010,7 +1018,7 @@ nonisolated private func traeComposer(_ screen: TraeScreen) -> TraeComposer? {
     }
     var bottom = index + 1
     while bottom < rows.endIndex, !isColumnZero(bottom) { bottom += 1 }
-    guard bottom < rows.endIndex, isBorder(bottom) else {
+    guard bottom < rows.endIndex, isRule(bottom) else {
       index += 1
       continue
     }
@@ -1110,7 +1118,7 @@ nonisolated private func traeDialogRegion(_ screen: TraeScreen, marker: Int) -> 
 }
 
 /// The rows a dialog can carry. Everything that belongs to the composer (its prompt
-/// row, its full-width rules, the status bar under it) or to the transcript (a
+/// row, its `─` rules, the status bar under it) or to the transcript (a
 /// glyph-headed tool call, a live-block footer, the welcome box) ends the region.
 nonisolated private func isTraeDialogContent(_ screen: TraeScreen, _ index: Int) -> Bool {
   let raw = screen.rows[index].raw

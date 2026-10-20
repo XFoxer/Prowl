@@ -1140,7 +1140,11 @@ nonisolated private func isTraeNumberedOption(_ text: String) -> Bool {
 /// the trimmed `text` of a screen row would have dropped.
 nonisolated private func hasTraeInterruptHint(_ rawLine: String) -> Bool {
   let lower = rawLine.lowercased()
-  if lower.contains("to interrupt") { return !isTraeStartupProgressLine(lower) }
+  // The startup exclusion covers both forms: a boot line wide enough to lose its
+  // own tail keeps its `Starting MCP servers` head, so it must not come back as a
+  // clipped footer and earn the settle to Idle a spurious Done.
+  if isTraeStartupProgressLine(lower) { return false }
+  if lower.contains("to interrupt") { return true }
   return isTraeClippedRunningFooter(rawLine)
 }
 

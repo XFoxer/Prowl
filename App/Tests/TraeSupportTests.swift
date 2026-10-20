@@ -624,6 +624,24 @@ struct TraeSupportTests {
     #expect(agent.detectState(in: screen) == .working)
   }
 
+  @Test func clippedMcpBootLineAboveAnIdleComposerReadsAsIdle() throws {
+    let agent = try agent()
+    // The MCP boot progress line reuses the interrupt footer, and a narrow pane clips
+    // its tail too — leaving the same `<glyph> … (<elapsed> •` remnant as a running
+    // turn. The startup exclusion has to cover the clipped form as well, or a cold
+    // start would read Working and earn a spurious Done on the settle.
+    let border = String(repeating: "─", count: 120)
+    let screen = """
+      ✦ Starting MCP servers (1/6): XcodeBuildMCP, code-review-graph, mobile-mcp (0s • esc to …
+        └ Tip: Press ctrl+r to search your prompt history.
+      \(border)
+      ❯ Explain this codebase
+      \(border)
+        DeepSeek-V4.1-Flash (MAX) high · Context 100% left · ~/opt/Prowl ▧ Workspace Edit
+      """
+    #expect(agent.detectState(in: screen) == .idle)
+  }
+
   @Test func proseMentioningElapsedChromeWithoutALiveGlyphStaysIdle() throws {
     let agent = try agent()
     // Only a column-0 live glyph makes a line the live block's header. Prose, tool
